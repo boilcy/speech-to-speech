@@ -1,0 +1,13 @@
+__pycache__
+.pixi
+tmp
+cache
+docker
+.dockerignore
+.gitignore
+
+# project related
+licenses
+demos
+models
+submodules

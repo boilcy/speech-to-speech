@@ -1,0 +1,8 @@
+__pycache__
+tmp
+cache# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+models
+submodules

@@ -1,0 +1,43 @@
+---
+services:
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    # didn't use task for editing
+    command: 
+      - pixi
+      - run
+      - s2s_pipeline.py 
+      - --recv_host 
+      - 0.0.0.0 
+      - --send_host 
+      - 0.0.0.0 
+      - --lm_model_name 
+      - /usr/src/app/models/Qwen2.5-3B-Instruct
+      - --tts
+      - kokoro
+      - --init_chat_role 
+      - system
+      - --init_chat_prompt
+      - "你是一个帮助用户解决问题的助手"
+      - --language
+      - zh
+    expose:
+      - 12345/tcp
+      - 12346/tcp
+    ports:
+      - 12345:12345/tcp
+      - 12346:12346/tcp
+    volumes:
+      - ./models/:/usr/src/app/models/
+      - ./cache/:/root/.cache/
+      - ./s2s_pipeline.py:/usr/src/app/s2s_pipeline.py
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
