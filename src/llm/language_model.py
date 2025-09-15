@@ -71,6 +71,11 @@ class LanguageModelHandler(BaseHandler):
             "return_full_text": False,
             **gen_kwargs,
         }
+        # using tokenizer_encode_kwargs require always input chats instead of text
+        if "Qwen3" in model_name:
+            self.gen_kwargs["tokenizer_encode_kwargs"] = {
+                "enable_thinking": False,
+            }
 
         self.chat = Chat(chat_size)
         if init_chat_role:
@@ -126,7 +131,7 @@ class LanguageModelHandler(BaseHandler):
             if language_code[-5:] == "-auto":
                 language_code = language_code[:-5]
                 prompt = (
-                    f"Please reply to my message in {WHISPER_LANGUAGE_TO_LLM_LANGUAGE[language_code]}. "
+                    f"Please reply to my message in {WHISPER_LANGUAGE_TO_LLM_LANGUAGE[language_code] if language_code in WHISPER_LANGUAGE_TO_LLM_LANGUAGE else 'chinese'}. "
                     + prompt
                 )
 

@@ -81,7 +81,7 @@ cmd = [
     "python",
     "s2s_pipeline.py",
     "--lm_model_name",
-    ".\\models\\Qwen2.5-3B-Instruct",
+    ".\\models\\Qwen3-0.6B",
     "--stt_model_name",
     ".\\models\\whisper-large-v3-turbo",
     "--mode",
