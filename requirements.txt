@@ -1,0 +1,12 @@
+sounddevice
+numpy
+loguru
+kokoro
+tqdm
+soundfile
+pathlib
+librosa
+transformers[torch]
+nltk
+openai
+bitsandbytes
