@@ -18,6 +18,8 @@ class VADHandler(BaseHandler):
     def setup(
         self,
         should_listen: threading.Event,
+        model_name = "models/silero-vad",
+        source = "local",
         thresh=0.3,
         sample_rate: int = 16000,
         min_silence_ms: int = 1000,
@@ -31,7 +33,10 @@ class VADHandler(BaseHandler):
         self.min_silence_ms = min_silence_ms
         self.min_speech_ms = min_speech_ms
         self.max_speech_ms = max_speech_ms
-        self.model, _ = torch.hub.load("snakers4/silero-vad", "silero_vad")
+        if source == "local":
+            self.model, _ = torch.hub.load(model_name, "silero_vad", source="local")
+        else:
+            self.model, _ = torch.hub.load(model_name, "silero_vad", source="remote")
         self.iterator = VADIterator(
             self.model,
             threshold=thresh,
