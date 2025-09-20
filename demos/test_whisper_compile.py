@@ -1,15 +1,11 @@
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
-
 import torch
-from transformers import AutoModelForSpeechSeq2Seq
 from loguru import logger
-
+from transformers import AutoModelForSpeechSeq2Seq
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-model_id = "openai/whisper-small"
+model_id = "./models/whisper-large-v3-turbo"
 
 model = AutoModelForSpeechSeq2Seq.from_pretrained(
     model_id, dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
@@ -21,7 +17,7 @@ dummy_input = torch.randn(
     dtype=torch_dtype,
     device=device,
 )
-compile_mode = "reduce-overhead" # default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs
+compile_mode = None  # default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs
 
 gen_kwargs = {
     "max_new_tokens": 128,

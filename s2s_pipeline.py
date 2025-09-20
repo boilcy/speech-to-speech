@@ -32,7 +32,7 @@ try:
 except (LookupError, OSError):
     nltk.download("punkt_tab")
 try:
-    nltk.data.find("tokenizers/averaged_perceptron_tagger_eng")
+    nltk.data.find("taggers/averaged_perceptron_tagger_eng")
 except (LookupError, OSError):
     nltk.download("averaged_perceptron_tagger_eng")
 
@@ -160,7 +160,7 @@ def build_pipeline(
         from connections.local_audio_streamer import LocalAudioStreamer
 
         local_audio_streamer = LocalAudioStreamer(
-            input_queue=recv_audio_chunks_queue, output_queue=send_audio_chunks_queue
+            input_queue=recv_audio_chunks_queue, output_queue=send_audio_chunks_queue, sounddevice_device=module_kwargs.sounddevice_device
         )
         comms_handlers = [local_audio_streamer]
         should_listen.set()

@@ -38,7 +38,7 @@ def test_audio_devices():
         # 测试录音
         logger.info("\n🎙️  测试录音 (3秒)...")
         duration = 3
-        sample_rate = 16000
+        sample_rate = 44100
         
         recording = sd.rec(
             int(duration * sample_rate),

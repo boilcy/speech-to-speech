@@ -57,6 +57,15 @@ class LanguageModelHandlerArguments:
             "help": "Controls the randomness of the output. Set to 0.0 for deterministic (repeatable) outputs. Default is 0.0."
         },
     )
+    lm_gen_top_p: float = field(
+        default = 0.8,
+        metadata={
+            "help": "top_p"}
+    )
+    lm_gen_top_k: int = field(
+        default = 20,
+        metadata={"help":"top_k"}
+    )
     lm_gen_do_sample: bool = field(
         default=False,
         metadata={

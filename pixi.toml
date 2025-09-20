@@ -10,6 +10,7 @@ cuda = "12.0"
 
 [target.unix.activation.env]
 CUDA_HOME="$CONDA_PREFIX"
+LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 [target.win-64.activation.env]
 CUDA_HOME="%CONDA_PREFIX%"
 
@@ -25,6 +26,8 @@ openai = ">=1.107.1,<2"
 setuptools = ">=75.8.2,<81"
 librosa = ">=0.11.0,<0.12"
 pip = ">=25.2,<26"
+portaudio = ">=19.7.0,<20"
+# cuda-runtime = ">=12.6,<12.7"
 
 [target.win-64.dependencies]
 pytorch-gpu = ">=2.5.1,<3"
@@ -40,7 +43,7 @@ triton = ">=3.3.1,<4"
 # triton = ">=3.3.1,<4"
 # flash-attn = ">=2.8.3,<3"
 # cuda-toolkit = ">=12.9.1,<13"
-libcudss0 = ">=0.4.0.2, <1"
+# libcudss0 = ">=0.4.0.2, <1"
 
 [target.linux-aarch64.pypi-dependencies]
 torch = { version = ">=2.5.1", index = "https://pypi.jetson-ai-lab.io/jp6/cu126" }
@@ -94,13 +97,29 @@ cmd = [
     "python",
     "s2s_pipeline.py",
     "--lm_model_name",
-    ".\\models\\Qwen3-0.6B",
+    "./models/Qwen3-0.6B",
+    "--lm_gen_max_new_tokens",
+    "128",
+    "--lm_gen_max_min_tokens",
+    "24",
+    "--lm_gen_temperature",
+    "0.7",
+    "--lm_gen_top_p",
+    "0.8",
+    "--lm_gen_top_k",
+    "20",
+    "--lm_gen_do_sample",
+    "True",
     "--stt_model_name",
-    ".\\models\\whisper-large-v3-turbo",
+    "./models/whisper-large-v3-turbo",
     "--mode",
     "local",
     "--language",
     "zh",
     "--tts",
     "kokoro",
+    # "--tts_compile_mode",
+    # "reduce-overhead",
+    # "--stt_compile_mode",
+    # "reduce-overhead"
 ]

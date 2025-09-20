@@ -38,3 +38,9 @@ class ModuleArguments:
             "help": "Provide logging level. Example --log_level debug, default=info."
         },
     )
+    sounddevice_device: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "The sounddevice device to use. Default is None. Example --sounddevice_device 0,25."
+        },
+    )
