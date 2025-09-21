@@ -1,3 +1,4 @@
+from datetime import datetime
 from queue import Queue
 from threading import Event
 from typing import Optional
@@ -43,7 +44,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 os.environ["TORCHINDUCTOR_CACHE_DIR"] = os.path.join(CURRENT_DIR, "tmp")
 
 
-def rename_args(args, prefix):
+def rename_args(args, prefix, add_gen_kwargs=True):
     """
     Rename arguments by removing the prefix and prepares the gen_kwargs.
     """
@@ -57,7 +58,8 @@ def rename_args(args, prefix):
             else:
                 args.__dict__[new_key] = value
 
-    args.__dict__["gen_kwargs"] = gen_kwargs
+    if add_gen_kwargs:
+        args.__dict__["gen_kwargs"] = gen_kwargs
 
 
 def parse_args():
@@ -82,6 +84,37 @@ def parse_args():
         # Parse arguments from command line if no JSON file is provided
         return parser.parse_args_into_dataclasses()
 
+def setup_global_logging(log_level: str):
+    global logger
+    logger.remove()
+    log_level = log_level.upper() if log_level else "INFO"
+    valid_levels = ["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
+    if log_level not in valid_levels:
+        print(f"警告: 无效的日志级别 '{log_level}'。使用默认级别 'INFO'。", file=sys.stderr)
+        log_level = "INFO"
+
+    logger.add(
+        sys.stderr,
+        level=log_level,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        colorize=True,
+    )
+    log_file = os.path.join(CURRENT_DIR, "logs", f"s2s_pipeline_{log_level}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    logger.add(
+        log_file,
+        level=log_level,
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        colorize=True,
+        rotation="10 MB",
+        retention="10 days",
+        enqueue=False,
+    )
+    if log_level == "DEBUG":
+        import torch
+        torch._logging.set_logs(graph_breaks=True, recompiles=True, cudagraphs=True)
+
+    logger.info(f"全局日志级别已设置为: {log_level}")
 
 def overwrite_device_argument(common_device: Optional[str], *handler_kwargs):
     if common_device:
@@ -109,6 +142,7 @@ def prepare_all_args(
     open_api_language_model_handler_kwargs,
     kokoro_tts_handler_kwargs,
     open_api_tts_handler_kwargs,
+    vad_handler_kwargs,
 ):
     prepare_module_args(
         module_kwargs,
@@ -117,12 +151,14 @@ def prepare_all_args(
         open_api_language_model_handler_kwargs,
         kokoro_tts_handler_kwargs,
         open_api_tts_handler_kwargs,
+        vad_handler_kwargs,
     )
 
     rename_args(whisper_stt_handler_kwargs, "stt")
     rename_args(language_model_handler_kwargs, "lm")
     rename_args(open_api_language_model_handler_kwargs, "open_api")
     rename_args(kokoro_tts_handler_kwargs, "tts")
+    rename_args(vad_handler_kwargs, "vad", add_gen_kwargs=False)
 
 
 def initialize_queues_and_events():
@@ -320,6 +356,8 @@ def main():
         vad_handler_kwargs,
     ) = parse_args()
 
+    setup_global_logging(module_kwargs.log_level)
+
     prepare_all_args(
         module_kwargs,
         whisper_stt_handler_kwargs,
@@ -327,6 +365,7 @@ def main():
         open_api_language_model_handler_kwargs,
         kokoro_tts_handler_kwargs,
         open_api_tts_handler_kwargs,
+        vad_handler_kwargs,
     )
 
     logger.debug(f"Starting pipeline with args: {module_kwargs}")

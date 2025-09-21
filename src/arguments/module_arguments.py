@@ -33,9 +33,9 @@ class ModuleArguments:
         },
     )
     log_level: str = field(
-        default="info",
+        default="INFO",
         metadata={
-            "help": "Provide logging level. Example --log_level debug, default=info."
+            "help": "Provide logging level. Available levels: TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL. Example --log_level INFO, default=INFO."
         },
     )
     sounddevice_device: Optional[str] = field(

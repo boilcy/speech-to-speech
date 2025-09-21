@@ -82,9 +82,9 @@ cmd = [
     "python",
     "s2s_pipeline.py",
     "--lm_model_name",
-    ".\\models\\Qwen2.5-3B-Instruct",
+    "./models/Qwen2.5-3B-Instruct",
     "--stt_model_name",
-    ".\\models\\whisper-large-v3-turbo",
+    "./models/whisper-large-v3-turbo",
     "--recv_host", 
     "0.0.0.0",
     "--send_host",
@@ -100,7 +100,7 @@ cmd = [
 ]
 
 [tasks.client]
-args = ["host"]
+args = [{ "arg" = "host", "default" = "127.0.0.1" }]
 cmd = [
     "python",
     "listen_and_play.py",
@@ -109,14 +109,24 @@ cmd = [
 ]
 
 [tasks.local]
+args = [
+  { "arg" = "log_level", "default" = "INFO" }
+]
 cmd = [
     "python",
     "s2s_pipeline.py",
+    # vad setup
+    "--vad_model_name",
+    "G:\\models\\silero-vad",
+    # stt setup
+    "--stt_model_name",
+    "G:\\models\\whisper-large-v3-turbo",
+    # llm setup
     "--lm_model_name",
-    "./models/Qwen3-0.6B",
+    "G:\\models\\Qwen3-0.6B",
     "--lm_gen_max_new_tokens",
-    "128",
-    "--lm_gen_max_min_tokens",
+    "256",
+    "--lm_gen_min_new_tokens",
     "24",
     "--lm_gen_temperature",
     "0.7",
@@ -126,16 +136,15 @@ cmd = [
     "20",
     "--lm_gen_do_sample",
     "True",
-    "--stt_model_name",
-    "./models/whisper-large-v3-turbo",
+    # tts setup
+    "--tts",
+    "kokoro",
     "--mode",
     "local",
     "--language",
     "zh",
-    "--tts",
-    "kokoro",
-    # "--tts_compile_mode",
-    # "reduce-overhead",
-    # "--stt_compile_mode",
-    # "reduce-overhead"
+    "--log_level",
+    "{{log_level}}",
+    "--sounddevice_device",
+    "27,5"
 ]

@@ -44,6 +44,8 @@ class LanguageModelHandler(BaseHandler):
         chat_size=1,
         init_chat_role=None,
         init_chat_prompt="You are a helpful AI assistant.",
+        max_tokens=None,
+        preserve_recent=1,
     ):
         self.device = device
         self.torch_dtype = getattr(torch, torch_dtype)
@@ -66,10 +68,12 @@ class LanguageModelHandler(BaseHandler):
             skip_prompt=True,
             skip_special_tokens=True,
         )
+        # Filter out None values from gen_kwargs to avoid overriding model defaults
+        filtered_gen_kwargs = {k: v for k, v in gen_kwargs.items() if v is not None}
         self.gen_kwargs = {
             "streamer": self.streamer,
             "return_full_text": False,
-            **gen_kwargs,
+            **filtered_gen_kwargs,
         }
         # using tokenizer_encode_kwargs require always input chats instead of text
         if "Qwen3" in model_name:
@@ -77,13 +81,23 @@ class LanguageModelHandler(BaseHandler):
                 "enable_thinking": False,
             }
 
-        self.chat = Chat(chat_size)
+        # 使用改进的Chat类
+        self.chat = Chat(
+            max_history_pairs=chat_size,
+            max_tokens=max_tokens,
+            preserve_system=True,
+            preserve_recent=preserve_recent
+        )
+        
+        # 设置系统消息
         if init_chat_role:
             if not init_chat_prompt:
                 raise ValueError(
-                    "An initial promt needs to be specified when setting init_chat_role."
+                    "An initial prompt needs to be specified when setting init_chat_role."
                 )
             self.chat.init_chat({"role": init_chat_role, "content": init_chat_prompt})
+        elif init_chat_prompt:
+            self.chat.init_chat({"role": "system", "content": init_chat_prompt})
         self.user_role = user_role
 
         self.warmup()
@@ -94,10 +108,12 @@ class LanguageModelHandler(BaseHandler):
         dummy_input_text = "Repeat the word 'home'."
         dummy_chat = [{"role": self.user_role, "content": dummy_input_text}]
         warmup_gen_kwargs = {
-            "min_new_tokens": self.gen_kwargs["min_new_tokens"],
-            "max_new_tokens": self.gen_kwargs["max_new_tokens"],
             **self.gen_kwargs,
         }
+        if "min_new_tokens" not in warmup_gen_kwargs:
+            warmup_gen_kwargs["min_new_tokens"] = 1
+        if "max_new_tokens" not in warmup_gen_kwargs:
+            warmup_gen_kwargs["max_new_tokens"] = 10
 
         n_steps = 2
 
@@ -136,8 +152,10 @@ class LanguageModelHandler(BaseHandler):
                 )
 
         self.chat.append({"role": self.user_role, "content": prompt})
+        chat_list = self.chat.to_list()
+        logger.debug(f"Feeding chat list: {chat_list}")
         thread = Thread(
-            target=self.pipe, args=(self.chat.to_list(),), kwargs=self.gen_kwargs
+            target=self.pipe, args=(chat_list,), kwargs=self.gen_kwargs
         )
         thread.start()
         if self.device == "mps":

@@ -3,6 +3,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class VADHandlerArguments:
+    vad_model_name: str = field(
+        default="models/silero-vad",
+        metadata={
+            "help": "The name of the VAD model to use. Default is 'models/silero-vad'."
+        },
+    )
     thresh: float = field(
         default=0.3,
         metadata={

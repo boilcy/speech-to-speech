@@ -47,12 +47,12 @@ class LocalAudioStreamer:
         logger.info(devices)
 
         input_device_index = (
-            0
+            sd.default.device[0]
             if self.sounddevice_device is None
             else int(self.sounddevice_device.split(",")[0])
         )
         output_device_index = (
-            25
+            sd.default.device[1]
             if self.sounddevice_device is None
             else int(self.sounddevice_device.split(",")[1])
         )
@@ -91,6 +91,8 @@ class LocalAudioStreamer:
         def input_callback(indata, frames, time, status):
             if status:
                 logger.warning(f"Input audio callback status: {status}")
+            
+            logger.debug(f"Input audio callback: {indata}")
             
             # 回声抑制：如果正在播放音频或刚播放完，暂时抑制输入
             current_time = time.inputBufferAdcTime if hasattr(time, 'inputBufferAdcTime') else time.time()
