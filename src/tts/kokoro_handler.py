@@ -9,6 +9,115 @@ import torch
 from kokoro import KModel, KPipeline
 from loguru import logger
 
+KOKORO_ZH_REPO_ID = "hexgrad/Kokoro-82M-v1.1-zh"
+
+
+# Kokoro 语音模型文件名列表（由ls结果转换而来）
+KOKORO_ZH_VOICES = [
+    "af_maple",
+    "af_sol",
+    "bf_vale",
+    "zf_001",
+    "zf_002",
+    "zf_003",
+    "zf_004",
+    "zf_005",
+    "zf_006",
+    "zf_007",
+    "zf_008",
+    "zf_017",
+    "zf_018",
+    "zf_019",
+    "zf_021",
+    "zf_022",
+    "zf_023",
+    "zf_024",
+    "zf_026",
+    "zf_027",
+    "zf_028",
+    "zf_032",
+    "zf_036",
+    "zf_038",
+    "zf_039",
+    "zf_040",
+    "zf_042",
+    "zf_043",
+    "zf_044",
+    "zf_046",
+    "zf_047",
+    "zf_048",
+    "zf_049",
+    "zf_051",
+    "zf_059",
+    "zf_060",
+    "zf_067",
+    "zf_070",
+    "zf_071",
+    "zf_072",
+    "zf_073",
+    "zf_074",
+    "zf_075",
+    "zf_076",
+    "zf_077",
+    "zf_078",
+    "zf_079",
+    "zf_083",
+    "zf_084",
+    "zf_085",
+    "zf_086",
+    "zf_087",
+    "zf_088",
+    "zf_090",
+    "zf_092",
+    "zf_093",
+    "zf_094",
+    "zf_099",
+    "zm_009",
+    "zm_010",
+    "zm_011",
+    "zm_012",
+    "zm_013",
+    "zm_014",
+    "zm_015",
+    "zm_016",
+    "zm_020",
+    "zm_025",
+    "zm_029",
+    "zm_030",
+    "zm_031",
+    "zm_033",
+    "zm_034",
+    "zm_035",
+    "zm_037",
+    "zm_041",
+    "zm_045",
+    "zm_050",
+    "zm_052",
+    "zm_053",
+    "zm_054",
+    "zm_055",
+    "zm_056",
+    "zm_057",
+    "zm_058",
+    "zm_061",
+    "zm_062",
+    "zm_063",
+    "zm_064",
+    "zm_065",
+    "zm_066",
+    "zm_068",
+    "zm_069",
+    "zm_080",
+    "zm_081",
+    "zm_082",
+    "zm_089",
+    "zm_091",
+    "zm_095",
+    "zm_096",
+    "zm_097",
+    "zm_098",
+    "zm_100",
+]
 
 # Whisper 语言代码到 Kokoro 语音的映射
 WHISPER_LANGUAGE_TO_KOKORO_VOICE = {
@@ -60,18 +169,24 @@ class KokoroTTSHandler(BaseHandler):
 
         logger.info(f"Loading Kokoro model {model_name} on {self.device}")
 
-        self.model = KModel(repo_id=model_name).to(self.device).eval()
+        self.model = (
+            KModel(repo_id=KOKORO_ZH_REPO_ID, model_name=model_name)
+            .to(self.device)
+            .eval()
+        )
         if self.compile_mode:
             self.model.generation_config.cache_implementation = "static"
             self.model.forward = torch.compile(
                 self.model.forward, mode=self.compile_mode, fullgraph=True
             )
 
-        self.en_pipeline = KPipeline(lang_code="a", repo_id=model_name, model=False)
+        self.en_pipeline = KPipeline(
+            lang_code="a", repo_id=KOKORO_ZH_REPO_ID, model=False
+        )
 
         self.zh_pipeline = KPipeline(
             lang_code="z",
-            repo_id=model_name,
+            repo_id=KOKORO_ZH_REPO_ID,
             model=self.model,
             en_callable=self._en_callable,
         )

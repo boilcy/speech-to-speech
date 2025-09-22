@@ -122,9 +122,14 @@ class WhisperSTTHandler(BaseHandler):
 
         input_features = self.prepare_model_inputs(spoken_prompt)
         pred_ids = self.model.generate(input_features, **self.gen_kwargs)
-        language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[
-            2:-2
-        ]  # remove "<|" and "|>"
+        # 添加安全检查
+        if pred_ids.shape[1] < 2:
+            logger.warning(
+                f"Generated token sequence too short: {pred_ids.shape}, using fallback language"
+            )
+            language_code = self.last_language or "zh"
+        else:
+            language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[2:-2]
 
         logger.debug(f"Language Code Whisper: {language_code}")
         if language_code not in SUPPORTED_LANGUAGES:  # reprocess with the last language

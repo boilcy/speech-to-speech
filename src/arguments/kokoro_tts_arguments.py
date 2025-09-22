@@ -27,7 +27,12 @@ class KokoroTTSHandlerArguments:
             "help": "Compile mode for torch compile (Linux only). Either 'default', 'reduce-overhead' and 'max-autotune'. Default is None (no compilation)"
         },
     )
-
+    tts_default_voice: str = field(
+        default="zf_001",
+        metadata={
+            "help": "The default voice to use. See kokoro_handler.KOKORO_ZH_VOICES for available voices. Default is 'zf_001'."
+        },
+    )
     use_default_voice: bool = field(
         default=True,
         metadata={"help": "Whether to use the default list of speakers or not."},
