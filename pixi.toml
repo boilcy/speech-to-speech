@@ -117,17 +117,15 @@ cmd = [
     "s2s_pipeline.py",
     # vad setup
     "--vad_model_name",
-    "G:\\models\\silero-vad",
+    "G:/models/silero-vad",
     # stt setup
     "--stt_model_name",
-    "G:\\models\\whisper-large-v3-turbo",
+    "G:/models/whisper-large-v3-turbo",
     # llm setup
     "--lm_model_name",
-    "G:\\models\\Qwen3-0.6B",
+    "G:/models/Qwen3-0.6B",
     "--lm_gen_max_new_tokens",
     "256",
-    "--lm_gen_min_new_tokens",
-    "24",
     "--lm_gen_temperature",
     "0.7",
     "--lm_gen_top_p",
@@ -144,7 +142,8 @@ cmd = [
     "--language",
     "zh",
     "--log_level",
-    "{{log_level}}",
-    "--sounddevice_device",
-    "27,5"
+    "{{log_level}}"
 ]
+
+[tasks.format]
+cmd = "pixi exec --spec ruff ruff format ."

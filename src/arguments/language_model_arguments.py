@@ -58,7 +58,7 @@ class LanguageModelHandlerArguments:
             "help": "Number of recent conversation pairs to always preserve from deletion."
         },
     )
-    
+
     # Advanced generation parameters
     lm_gen_do_sample: bool = field(
         default=False,
@@ -67,15 +67,15 @@ class LanguageModelHandlerArguments:
         },
     )
     lm_gen_max_new_tokens: int = field(
-        default=256,
+        default=128,
         metadata={
             "help": "Maximum number of new tokens to generate in a single completion. Default is 128."
         },
     )
     lm_gen_min_new_tokens: int = field(
-        default=1,
+        default=None,
         metadata={
-            "help": "Minimum number of new tokens to generate in a single completion. Default is 0."
+            "help": "Minimum number of new tokens to generate in a single completion. Default is None."
         },
     )
     lm_gen_temperature: float = field(
@@ -85,13 +85,13 @@ class LanguageModelHandlerArguments:
         },
     )
     lm_gen_top_p: float = field(
-        default = None,
+        default=None,
         metadata={
             "help": "Controls the diversity of the output. Default is None (use model default)."
         },
     )
     lm_gen_top_k: int = field(
-        default = None,
+        default=None,
         metadata={
             "help": "Controls the diversity of the output. Default is None (use model default)."
         },

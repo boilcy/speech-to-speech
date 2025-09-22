@@ -9,6 +9,7 @@ from src.utils.misc import int2float
 
 from loguru import logger
 
+
 class VADHandler(BaseHandler):
     """
     Handles voice activity detection. When voice activity is detected, audio will be accumulated until the end of speech is detected and then passed
@@ -18,8 +19,8 @@ class VADHandler(BaseHandler):
     def setup(
         self,
         should_listen: threading.Event,
-        model_name = "models/silero-vad",
-        source = "local",
+        model_name="models/silero-vad",
+        source="local",
         thresh=0.3,
         sample_rate: int = 16000,
         min_silence_ms: int = 1000,
@@ -47,6 +48,7 @@ class VADHandler(BaseHandler):
         self.audio_enhancement = audio_enhancement
         if audio_enhancement:
             from df.enhance import enhance, init_df
+
             self.enhanced_model, self.df_state, _ = init_df()
             self.enhance_func = enhance
 
@@ -60,11 +62,11 @@ class VADHandler(BaseHandler):
             duration_ms = len(array) / self.sample_rate * 1000
             if duration_ms < self.min_speech_ms or duration_ms > self.max_speech_ms:
                 logger.debug(
-                    f"audio input of duration: {len(array) / self.sample_rate}s, skipping"
+                    f"Audio input duration: {duration_ms:.0f}ms, skipping (min: {self.min_speech_ms}ms, max: {self.max_speech_ms}ms)"
                 )
             else:
                 self.should_listen.clear()
-                logger.debug("Stop listening")
+                logger.info(f"Speech detected, duration: {duration_ms:.0f}ms")
                 if self.audio_enhancement:
                     if self.sample_rate != self.df_state.sr():
                         audio_float32 = torchaudio.functional.resample(
@@ -91,4 +93,4 @@ class VADHandler(BaseHandler):
 
     @property
     def min_time_to_debug(self):
-        return 0.00001
+        return 0.001

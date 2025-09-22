@@ -9,17 +9,22 @@ import cv2
 import torch
 from PIL import Image
 from transformers import (
-    AutoProcessor, AutoModelForVision2Seq,
+    AutoProcessor,
+    AutoModelForVision2Seq,
 )
 
 # Optional Qwen import is deferred until --use-qwen is set
 QWEN_AVAILABLE = False
 
+
 def bgr_to_pil(frame_bgr):
     # OpenCV -> PIL (BGR -> RGB)
     return Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
 
-def build_gst_pipeline(sensor_id=0, width=1280, height=720, fps=30, flip_method=0, csi=True):
+
+def build_gst_pipeline(
+    sensor_id=0, width=1280, height=720, fps=30, flip_method=0, csi=True
+):
     """
     Jetson-friendly pipelines.
     - CSI camera: nvarguscamerasrc
@@ -41,6 +46,7 @@ def build_gst_pipeline(sensor_id=0, width=1280, height=720, fps=30, flip_method=
             f"videoconvert ! video/x-raw, format=BGR ! appsink drop=true"
         )
 
+
 def open_capture(args):
     if args.gstreamer:
         pipeline = build_gst_pipeline(
@@ -49,11 +55,13 @@ def open_capture(args):
             height=args.height,
             fps=args.fps,
             flip_method=args.flip,
-            csi=not args.usb_on_jetson_is_v4l2
+            csi=not args.usb_on_jetson_is_v4l2,
         )
         cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
         if not cap.isOpened():
-            print("[WARN] GStreamer pipeline failed; falling back to cv2.VideoCapture(index).")
+            print(
+                "[WARN] GStreamer pipeline failed; falling back to cv2.VideoCapture(index)."
+            )
             cap = cv2.VideoCapture(args.cam_index)
     else:
         cap = cv2.VideoCapture(args.cam_index)
@@ -66,19 +74,28 @@ def open_capture(args):
         raise RuntimeError("Could not open camera.")
     return cap
 
+
 def load_smolvlm(device, dtype, model_id):
     processor = AutoProcessor.from_pretrained(model_id)
     model = AutoModelForVision2Seq.from_pretrained(
         model_id,
         torch_dtype=dtype,
         # flash-attn 2 speeds up on desktop GPUs; on Jetson keep 'eager'
-        _attn_implementation="flash_attention_2" if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8) else "eager",
+        _attn_implementation="flash_attention_2"
+        if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8)
+        else "eager",
     ).to(device)
     return processor, model
 
-def caption_with_smolvlm(proc, model, pil_img, prompt_text="Describe this image briefly."):
+
+def caption_with_smolvlm(
+    proc, model, pil_img, prompt_text="Describe this image briefly."
+):
     messages = [
-        {"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt_text}]}
+        {
+            "role": "user",
+            "content": [{"type": "image"}, {"type": "text", "text": prompt_text}],
+        }
     ]
     prompt = proc.apply_chat_template(messages, add_generation_prompt=True)
     inputs = proc(text=prompt, images=[pil_img], return_tensors="pt").to(model.device)
@@ -88,50 +105,103 @@ def caption_with_smolvlm(proc, model, pil_img, prompt_text="Describe this image 
     # Strip a common "Assistant: " prefix if present
     return text.split("Assistant:", 1)[-1].strip()
 
+
 def maybe_load_qwen(device, dtype, qwen_id):
     global QWEN_AVAILABLE
     from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor  # noqa: F401
+
     QWEN_AVAILABLE = True
     model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
-        qwen_id, torch_dtype=dtype, device_map="auto",
+        qwen_id,
+        torch_dtype=dtype,
+        device_map="auto",
         # use FA2 if available
-        attn_implementation="flash_attention_2" if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8) else "eager",
+        attn_implementation="flash_attention_2"
+        if (device == "cuda" and torch.cuda.get_device_capability()[0] >= 8)
+        else "eager",
     )
     proc = __import__("transformers").Qwen2_5OmniProcessor.from_pretrained(qwen_id)
     return proc, model
 
-def ask_qwen(qproc, qmodel, pil_img, smol_caption, user_question="What key facts should I know about the scene?"):
+
+def ask_qwen(
+    qproc,
+    qmodel,
+    pil_img,
+    smol_caption,
+    user_question="What key facts should I know about the scene?",
+):
     conversation = [
-        {"role": "system", "content": [{"type": "text", "text": "You are a precise vision assistant."}]},
-        {"role": "user", "content": [
-            {"type": "image", "image": pil_img},
-            {"type": "text", "text": f"Auto caption: {smol_caption}\n\n{user_question} Keep it short."}
-        ]},
+        {
+            "role": "system",
+            "content": [
+                {"type": "text", "text": "You are a precise vision assistant."}
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_img},
+                {
+                    "type": "text",
+                    "text": f"Auto caption: {smol_caption}\n\n{user_question} Keep it short.",
+                },
+            ],
+        },
     ]
-    inputs = qproc.apply_chat_template(conversation, add_generation_prompt=True, return_tensors="pt").to(qmodel.device)
+    inputs = qproc.apply_chat_template(
+        conversation, add_generation_prompt=True, return_tensors="pt"
+    ).to(qmodel.device)
     with torch.no_grad():
         out_ids = qmodel.generate(**inputs, max_new_tokens=96)
     text = qproc.batch_decode(out_ids, skip_special_tokens=True)[0]
     return text
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Camera -> SmolVLM-256M -> (optional) Qwen2.5-Omni")
-    parser.add_argument("--cam-index", type=int, default=0, help="Camera index or sensor-id")
+    parser = argparse.ArgumentParser(
+        description="Camera -> SmolVLM-256M -> (optional) Qwen2.5-Omni"
+    )
+    parser.add_argument(
+        "--cam-index", type=int, default=0, help="Camera index or sensor-id"
+    )
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--fps", type=int, default=30)
-    parser.add_argument("--gstreamer", action="store_true", help="Use GStreamer pipeline (Jetson friendly)")
-    parser.add_argument("--usb-on-jetson-is-v4l2", action="store_true", help="Use v4l2src pipeline instead of nvarguscamerasrc")
-    parser.add_argument("--flip", type=int, default=0, help="nvvidconv flip-method for CSI (0..7)")
+    parser.add_argument(
+        "--gstreamer",
+        action="store_true",
+        help="Use GStreamer pipeline (Jetson friendly)",
+    )
+    parser.add_argument(
+        "--usb-on-jetson-is-v4l2",
+        action="store_true",
+        help="Use v4l2src pipeline instead of nvarguscamerasrc",
+    )
+    parser.add_argument(
+        "--flip", type=int, default=0, help="nvvidconv flip-method for CSI (0..7)"
+    )
 
-    parser.add_argument("--model-smolvlm", default="HuggingFaceTB/SmolVLM-256M-Instruct")
+    parser.add_argument(
+        "--model-smolvlm", default="HuggingFaceTB/SmolVLM-256M-Instruct"
+    )
     parser.add_argument("--model-qwen", default="Qwen/Qwen2.5-Omni-3B")
-    parser.add_argument("--use-qwen", action="store_true", help="Also query Qwen with image+caption")
-    parser.add_argument("--interval", type=float, default=1.0, help="Seconds between inferences")
-    parser.add_argument("--save", action="store_true", help="Save frames and JSONL logs")
+    parser.add_argument(
+        "--use-qwen", action="store_true", help="Also query Qwen with image+caption"
+    )
+    parser.add_argument(
+        "--interval", type=float, default=1.0, help="Seconds between inferences"
+    )
+    parser.add_argument(
+        "--save", action="store_true", help="Save frames and JSONL logs"
+    )
     parser.add_argument("--out-dir", default="captures")
-    parser.add_argument("--overlay", action="store_true", help="Draw caption on the preview window")
-    parser.add_argument("--question", default="What key facts should I know about the scene?")
+    parser.add_argument(
+        "--overlay", action="store_true", help="Draw caption on the preview window"
+    )
+    parser.add_argument(
+        "--question", default="What key facts should I know about the scene?"
+    )
 
     args = parser.parse_args()
 
@@ -194,7 +264,16 @@ def main():
             if args.overlay:
                 txt = (caption[:80] + "…") if len(caption) > 80 else caption
                 cv2.rectangle(show, (0, 0), (show.shape[1], 40), (0, 0, 0), -1)
-                cv2.putText(show, txt, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.putText(
+                    show,
+                    txt,
+                    (10, 28),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
 
             # Save
             if args.save:
@@ -209,12 +288,14 @@ def main():
 
         # Preview
         cv2.imshow("Live (SmolVLM -> Qwen)", show)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cap.release()
     cv2.destroyAllWindows()
-    if log_f: log_f.close()
+    if log_f:
+        log_f.close()
+
 
 if __name__ == "__main__":
     main()

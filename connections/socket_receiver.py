@@ -1,6 +1,7 @@
 import socket
 from loguru import logger
 
+
 class SocketReceiver:
     """
     Handles reception of the audio packets from the client.

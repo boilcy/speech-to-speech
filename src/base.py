@@ -30,14 +30,16 @@ class BaseHandler(ABC):
         self.queue_timeout = queue_timeout
         self._times = deque(maxlen=1000)
         self.items_processed = 0
-        
-        logger.debug(f"Setup {self.__class__.__name__} with args: {setup_args} and kwargs: {setup_kwargs}")
+
+        logger.debug(
+            f"Setup {self.__class__.__name__} with args: {setup_args} and kwargs: {setup_kwargs}"
+        )
 
         self.setup(*setup_args, **setup_kwargs)
-        
+
     def setup(self, *setup_args, **setup_kwargs):
         pass
-    
+
     @abstractmethod
     def process(self, item):
         """
@@ -63,7 +65,8 @@ class BaseHandler(ABC):
                         self.output_queue.put(output)
                 except Exception as e:
                     logger.error(
-                        f"{self.__class__.__name__}: Error processing item: {item}. Error: {e}", exc_info=True
+                        f"{self.__class__.__name__}: Error processing item: {item}. Error: {e}",
+                        exc_info=True,
                     )
 
                 duration = perf_counter() - start_time

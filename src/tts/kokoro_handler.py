@@ -41,7 +41,9 @@ class KokoroTTSHandler(BaseHandler):
         gen_kwargs={},
     ):
         if compile_mode and sys.platform != "linux":
-            logger.warning("Torch compile is only available on Linux. Disabling compile mode.")
+            logger.warning(
+                "Torch compile is only available on Linux. Disabling compile mode."
+            )
             compile_mode = None
         self.should_listen = should_listen
         self.device = device if torch.cuda.is_available() else "cpu"
@@ -173,7 +175,9 @@ class KokoroTTSHandler(BaseHandler):
 
                 result = next(generator)
                 audio = result.audio
-                logger.debug(f"Generated audio: {type(audio)} {audio.shape}")
+                logger.debug(
+                    f"Audio generated, shape: {audio.shape if audio is not None else 'None'}"
+                )
 
                 if audio is None or audio.numel() == 0:
                     logger.warning("Generated empty audio")
@@ -209,16 +213,19 @@ class KokoroTTSHandler(BaseHandler):
 
         if audio is not None:
             # 分块输出音频
+            logger.debug(f"Outputting audio in chunks, total length: {len(audio)}")
             for i in range(0, len(audio), self.blocksize):
                 global pipeline_start
                 if i == 0 and "pipeline_start" in globals():
                     logger.info(
-                        f"Time to first audio: {perf_counter() - pipeline_start:.3f}"
+                        f"Time to first audio: {perf_counter() - pipeline_start:.3f}s"
                     )
                 chunk = audio[i : i + self.blocksize]
                 if len(chunk) < self.blocksize:
                     chunk = np.pad(chunk, (0, self.blocksize - len(chunk)))
                 yield chunk
+        else:
+            logger.warning("No audio generated, skipping output")
 
         # 等待线程完成
         thread.join()

@@ -3,6 +3,7 @@ tmp
 cache# pixi environments
 .pixi/*
 !.pixi/config.toml
+.vscode
 
 models
 submodules

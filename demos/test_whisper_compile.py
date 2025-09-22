@@ -17,7 +17,9 @@ dummy_input = torch.randn(
     dtype=torch_dtype,
     device=device,
 )
-compile_mode = None  # default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs
+compile_mode = (
+    None  # default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs
+)
 
 gen_kwargs = {
     "max_new_tokens": 128,

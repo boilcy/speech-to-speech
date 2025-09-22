@@ -1,9 +1,6 @@
 from time import perf_counter
 import sys
-from transformers import (
-    AutoProcessor,
-    AutoModelForSpeechSeq2Seq
-)
+from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 import torch
 from copy import copy
 from loguru import logger
@@ -22,7 +19,7 @@ SUPPORTED_LANGUAGES = [
     "pl",
     "it",
     "nl",
-    "zh"
+    "zh",
 ]
 
 
@@ -41,7 +38,9 @@ class WhisperSTTHandler(BaseHandler):
         gen_kwargs={},
     ):
         if compile_mode and sys.platform != "linux":
-            logger.warning("Torch compile is only available on Linux. Disabling compile mode.")
+            logger.warning(
+                "Torch compile is only available on Linux. Disabling compile mode."
+            )
             compile_mode = None
         self.device = device
         self.torch_dtype = getattr(torch, torch_dtype)
@@ -116,35 +115,39 @@ class WhisperSTTHandler(BaseHandler):
             )
 
     def process(self, spoken_prompt):
-        logger.debug("infering whisper...")
+        logger.debug("Starting Whisper inference...")
 
         global pipeline_start
         pipeline_start = perf_counter()
 
         input_features = self.prepare_model_inputs(spoken_prompt)
         pred_ids = self.model.generate(input_features, **self.gen_kwargs)
-        language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[2:-2]  # remove "<|" and "|>"
+        language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[
+            2:-2
+        ]  # remove "<|" and "|>"
 
-        logger.info(f"Language Code Whisper: {language_code}")
+        logger.debug(f"Language Code Whisper: {language_code}")
         if language_code not in SUPPORTED_LANGUAGES:  # reprocess with the last language
-            logger.warning("Whisper detected unsupported language:", language_code)
+            logger.warning(
+                f"Unsupported language detected: {language_code}, falling back to: {self.last_language}"
+            )
             gen_kwargs = copy(self.gen_kwargs)
-            gen_kwargs['language'] = self.last_language
+            gen_kwargs["language"] = self.last_language
             language_code = self.last_language
             pred_ids = self.model.generate(input_features, **gen_kwargs)
         else:
             self.last_language = language_code
-        
+
         pred_text = self.processor.batch_decode(
             pred_ids, skip_special_tokens=True, decode_with_timestamps=False
         )[0]
         language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[2:-2]
 
-        logger.debug("finished whisper inference")
+        logger.debug("Whisper inference completed")
         logger.info(f"USER: {pred_text}")
-        logger.debug(f"Language Code Whisper: {language_code}")
+        logger.debug(f"Final language code: {language_code}")
 
         if self.start_language == "auto":
             language_code += "-auto"
-            
+
         yield (pred_text, language_code)

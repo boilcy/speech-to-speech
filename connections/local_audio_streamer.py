@@ -1,218 +1,243 @@
 import threading
-import sounddevice as sd
 import numpy as np
+import sounddevice as sd
 import librosa
-import time
 from loguru import logger
+from queue import Queue
+
+# --- Constants ---
+TARGET_SAMPLE_RATE = 16000
+# Minimum audio chunk size in samples, required by models like VAD
+VAD_MIN_CHUNK_SAMPLES = 512
+# Data type for audio processing
+AUDIO_DTYPE_FLOAT32 = np.float32
+AUDIO_DTYPE_INT16 = np.int16
 
 
 class LocalAudioStreamer:
     def __init__(
         self,
-        input_queue,
-        output_queue,
-        list_play_chunk_size=512,
-        sounddevice_device=None,
-        echo_suppression_delay=0.2,  # 回声抑制延迟（秒）
-        echo_suppression_factor=0.8,  # 回声抑制强度
+        input_queue: Queue,
+        output_queue: Queue,
+        chunk_size: int = 512,
+        device: str = None,  # Input, Output
+        echo_suppression_delay: float = 0.2,
+        echo_suppression_factor: float = 0.8,
     ):
-        self.list_play_chunk_size = list_play_chunk_size
-
-        self.stop_event = threading.Event()
         self.input_queue = input_queue
         self.output_queue = output_queue
-
-        self.sounddevice_device = sounddevice_device
-        
-        # Buffer for accumulating resampled audio to meet minimum chunk size
-        self.audio_buffer = np.array([], dtype=np.float32)
-        self.min_chunk_samples = 512  # Minimum samples required by VAD model
-        
-        # Echo suppression parameters
+        self.chunk_size = chunk_size
+        self.device_str = device
         self.echo_suppression_delay = echo_suppression_delay
-        self.echo_suppression_factor = echo_suppression_factor
-        self.is_playing = threading.Event()  # Flag to indicate if we're currently playing audio
-        self.last_play_time = 0  # Timestamp of last audio playback
-        
-        # Output audio history for echo cancellation
-        self.output_history_buffer = np.array([], dtype=np.float32)
-        self.max_history_samples = int(16000 * echo_suppression_delay * 2)  # 2x delay buffer
-        
-        # Processing lock to prevent race conditions
-        self.processing_lock = threading.Lock()
+        self.min_gain = 1.0 - echo_suppression_factor
 
-    def run(self):
+        self.stop_event = threading.Event()
+        self.is_playing = threading.Event()
+        self.last_play_time = 0.0
+
+        # Buffer for incoming audio before it's chunked
+        self._input_buffer = np.array([], dtype=AUDIO_DTYPE_FLOAT32)
+
+        # Device properties that will be configured in run()
+        self._input_device_idx = None
+        self._output_device_idx = None
+        self._input_device_sr = None
+        self._needs_resampling = False
+
+    def _setup_devices(self):
+        """Queries and sets up the audio devices."""
+        logger.debug("Querying audio devices...")
         devices = sd.query_devices()
-        logger.info("Available devices:")
-        logger.info(devices)
+        logger.info(f"Available audio devices:\n{devices}")
 
-        input_device_index = (
-            sd.default.device[0]
-            if self.sounddevice_device is None
-            else int(self.sounddevice_device.split(",")[0])
-        )
-        output_device_index = (
-            sd.default.device[1]
-            if self.sounddevice_device is None
-            else int(self.sounddevice_device.split(",")[1])
-        )
-
-        sd.default.device = input_device_index, output_device_index
-
-        default_input_device = devices[input_device_index]["name"]
-        default_output_device = devices[output_device_index]["name"]
-
-        default_input_sample_rate = int(
-            devices[input_device_index]["default_samplerate"]
-        )
-        target_sample_rate = 16000
-        
-        default_output_sample_rate = int(
-            devices[output_device_index]["default_samplerate"]
-        )
-
-        logger.info(
-            f"Using input/output device: {default_input_device}/{default_output_device}"
-        )
-        logger.info(
-            f"Input Device sample rate: {default_input_sample_rate}Hz, target: {target_sample_rate}Hz"
-        )
-
-        # Calculate resampling ratio if needed for input (from stream rate to target 16kHz)
-        needs_input_resampling = default_input_sample_rate != target_sample_rate
-        if needs_input_resampling:
-            input_resample_ratio = target_sample_rate / default_input_sample_rate
-            logger.info(f"Input resampling enabled: {default_input_sample_rate}Hz -> {target_sample_rate}Hz")
+        if self.device_str:
+            try:
+                self._input_device_idx, self._output_device_idx = map(
+                    int, self.device_str.split(",")
+                )
+            except (ValueError, IndexError):
+                logger.warning(
+                    f"Invalid device string '{self.device_str}'. Using default devices."
+                )
+                self._input_device_idx, self._output_device_idx = sd.default.device
         else:
-            input_resample_ratio = 1
+            self._input_device_idx, self._output_device_idx = sd.default.device
 
-        logger.info(f"Using separate streams due to different sample rates: input {default_input_sample_rate}Hz, output {default_output_sample_rate}Hz")
-        
-        def input_callback(indata, frames, time, status):
-            if status:
-                logger.warning(f"Input audio callback status: {status}")
-            
-            logger.debug(f"Input audio callback: {indata}")
-            
-            # 回声抑制：如果正在播放音频或刚播放完，暂时抑制输入
-            current_time = time.inputBufferAdcTime if hasattr(time, 'inputBufferAdcTime') else time.time()
+        sd.default.device = self._input_device_idx, self._output_device_idx
+
+        input_device_info = devices[self._input_device_idx]
+        output_device_info = devices[self._output_device_idx]
+
+        self._input_device_sr = int(input_device_info["default_samplerate"])
+        self._needs_resampling = self._input_device_sr != TARGET_SAMPLE_RATE
+
+        logger.info(
+            f"Using Input Device : '{input_device_info['name']}' (Index: {self._input_device_idx})"
+        )
+        logger.info(
+            f"Using Output Device: '{output_device_info['name']}' (Index: {self._output_device_idx})"
+        )
+        logger.info(f"Input device sample rate: {self._input_device_sr} Hz")
+        if self._needs_resampling:
+            logger.info(
+                f"Input resampling enabled: {self._input_device_sr}Hz -> {TARGET_SAMPLE_RATE}Hz"
+            )
+
+    def _input_callback(
+        self, indata: np.ndarray, frames: int, time, status: sd.CallbackFlags
+    ):
+        """Callback function for the audio input stream."""
+        if status:
+            logger.warning(f"Input stream status: {status}")
+
+        current_time = time.currentTime
+        gain = 1.0
+
+        # --- Simplified Echo Suppression Logic ---
+        if self.is_playing.is_set():
+            gain = self.min_gain
+            logger.debug(f"Playback active. Suppressing input with gain: {gain:.2f}")
+        elif self.last_play_time > 0:
             time_since_last_play = current_time - self.last_play_time
-            
-            # 如果正在播放或播放结束后的抑制延迟期内，降低输入音频或跳过处理
-            if self.is_playing.is_set() or time_since_last_play < self.echo_suppression_delay:
-                # 在回声抑制期间，要么完全跳过，要么大幅降低音量
-                if time_since_last_play < self.echo_suppression_delay * 0.5:
-                    # 完全抑制前半段时间
-                    return
-                # 后半段时间逐渐恢复
-                suppression_factor = (time_since_last_play - self.echo_suppression_delay * 0.5) / (self.echo_suppression_delay * 0.5)
-                suppression_factor = min(1.0, max(0.0, suppression_factor)) * (1 - self.echo_suppression_factor)
+            # Ensure time_since_last_play is non-negative and within reasonable bounds
+            if 0 <= time_since_last_play < self.echo_suppression_delay:
+                # Ramp gain up from min_gain to 1.0 over the delay period
+                ramp_progress = time_since_last_play / self.echo_suppression_delay
+                gain = self.min_gain + (1.0 - self.min_gain) * ramp_progress
+                logger.debug(
+                    f"Post-playback suppression. Time since play: {time_since_last_play:.2f}s. "
+                    f"Ramping gain to: {gain:.2f}"
+                )
+            elif time_since_last_play < 0:
+                # Handle negative time difference (clock issues or callback timing)
+                logger.debug(
+                    f"Negative time difference detected: {time_since_last_play:.2f}s. Using min_gain."
+                )
+                gain = self.min_gain
+
+        if gain < 1.0:
+            indata *= gain
+
+        # --- Resampling and Buffering ---
+        try:
+            # Use only the first channel and ensure it's float32
+            input_audio = indata[:, 0].astype(AUDIO_DTYPE_FLOAT32)
+
+            if self._needs_resampling:
+                resampled_audio = librosa.resample(
+                    y=input_audio,
+                    orig_sr=self._input_device_sr,
+                    target_sr=TARGET_SAMPLE_RATE,
+                )
             else:
-                suppression_factor = 1.0
-            
-            # Handle input audio (recording)
-            if indata is not None and len(indata) > 0:
-                with self.processing_lock:
-                    try:
-                        # Convert input data to float32 for processing
-                        input_audio = indata[:, 0].astype(np.float32) * suppression_factor
-                        
-                        # Resample input audio if needed (from device rate to 16kHz)
-                        if needs_input_resampling:
-                            resampled_input = librosa.resample(
-                                input_audio, 
-                                orig_sr=default_input_sample_rate, 
-                                target_sr=target_sample_rate
-                            )
-                        else:
-                            resampled_input = input_audio
-                        
-                        # Add to buffer and process when we have enough samples
-                        self.audio_buffer = np.concatenate([self.audio_buffer, resampled_input])
-                        
-                        # Process chunks of minimum size
-                        while len(self.audio_buffer) >= self.min_chunk_samples:
-                            chunk = self.audio_buffer[:self.min_chunk_samples]
-                            self.audio_buffer = self.audio_buffer[self.min_chunk_samples:]
-                            
-                            # Convert to int16 for pipeline consistency
-                            chunk_int16 = (chunk * 32767).astype(np.int16)
-                            
-                            # 只在非抑制期间发送到队列
-                            if suppression_factor > 0.3:  # 只有在抑制因子足够高时才处理
-                                self.input_queue.put(chunk_int16)
-                                
-                    except Exception as e:
-                        logger.error(f"Error in input callback: {e}")
-        
-        def output_callback(outdata, frames, time, status):
-            if status:
-                logger.warning(f"Output audio callback status: {status}")
-                
-            if self.output_queue.empty():
-                outdata[:] = 0
-                self.is_playing.clear()  # 标记不在播放
+                resampled_audio = input_audio
+
+            self._input_buffer = np.concatenate([self._input_buffer, resampled_audio])
+
+            # --- Chunking and Queuing ---
+            while len(self._input_buffer) >= VAD_MIN_CHUNK_SAMPLES:
+                chunk = self._input_buffer[:VAD_MIN_CHUNK_SAMPLES]
+                self._input_buffer = self._input_buffer[VAD_MIN_CHUNK_SAMPLES:]
+
+                # Convert to int16 for the processing pipeline
+                chunk_int16 = (chunk * 32767).astype(AUDIO_DTYPE_INT16)
+                self.input_queue.put(chunk_int16)
+
+        except Exception as e:
+            logger.error(f"Error in input callback: {e}")
+
+    def _output_callback(
+        self, outdata: np.ndarray, frames: int, time, status: sd.CallbackFlags
+    ):
+        """Callback function for the audio output stream."""
+        if status:
+            logger.warning(f"Output stream status: {status}")
+
+        try:
+            if not self.output_queue.empty():
+                audio_chunk = self.output_queue.get_nowait()
+
+                # Set playback flag and update timestamp
+                if not self.is_playing.is_set():
+                    logger.debug("Playback started.")
+                    self.is_playing.set()
+                self.last_play_time = time.currentTime
+
+                # Ensure chunk fits into outdata buffer
+                chunk_len = len(audio_chunk)
+                if chunk_len < frames:
+                    # Pad with silence if chunk is too short
+                    outdata[:chunk_len, 0] = audio_chunk
+                    outdata[chunk_len:, 0] = 0
+                else:
+                    # Truncate if chunk is too long
+                    outdata[:, 0] = audio_chunk[:frames]
+
             else:
-                try:
-                    with self.processing_lock:
-                        audio_data = self.output_queue.get_nowait()
-                        
-                        # 确保数据格式正确
-                        if len(audio_data.shape) == 1:
-                            # 单声道数据，添加维度
-                            audio_output = audio_data[:frames] if len(audio_data) >= frames else np.pad(audio_data, (0, frames - len(audio_data)))
-                        else:
-                            # 多声道数据，取第一个声道
-                            audio_output = audio_data[:frames, 0] if len(audio_data) >= frames else np.pad(audio_data[:, 0], (0, frames - len(audio_data)))
-                        
-                        outdata[:, 0] = audio_output
-                        
-                        # 更新播放状态和时间戳
-                        self.is_playing.set()
-                        self.last_play_time = time.outputBufferDacTime if hasattr(time, 'outputBufferDacTime') else time.time()
-                        
-                        # 更新输出历史缓冲区用于回声消除
-                        output_float = audio_output.astype(np.float32) / 32767.0 if audio_output.dtype == np.int16 else audio_output.astype(np.float32)
-                        self.output_history_buffer = np.concatenate([self.output_history_buffer, output_float])
-                        
-                        # 限制历史缓冲区大小
-                        if len(self.output_history_buffer) > self.max_history_samples:
-                            self.output_history_buffer = self.output_history_buffer[-self.max_history_samples:]
-                            
-                except Exception as e:
-                    logger.error(f"Error in output callback: {e}")
-                    outdata[:] = 0
+                # Fill with silence if queue is empty
+                outdata.fill(0)
+                if self.is_playing.is_set():
+                    logger.debug(
+                        f"Output queue empty. Playback stopped. "
+                        f"Echo suppression will ramp down for {self.echo_suppression_delay}s."
+                    )
                     self.is_playing.clear()
 
-        
-        # 优化缓冲区设置以减少延迟和overflow
-        input_blocksize = min(self.list_play_chunk_size, 1024)  # 减小输入块大小
-        output_blocksize = self.list_play_chunk_size
-        
-        logger.info(f"Audio stream settings:")
-        logger.info(f"  Input: device={input_device_index}, rate={default_input_sample_rate}Hz, blocksize={input_blocksize}")
-        logger.info(f"  Output: device={output_device_index}, rate=16000Hz, blocksize={output_blocksize}")
-        logger.info(f"  Echo suppression: delay={self.echo_suppression_delay}s, factor={self.echo_suppression_factor}")
-        
-        # Create separate input and output streams
-        with sd.InputStream(
-            device=input_device_index,
-            samplerate=default_input_sample_rate,
-            dtype=np.float32,
-            channels=1,
-            callback=input_callback,
-            blocksize=input_blocksize,
-            latency='low',  # 低延迟模式
-        ), sd.OutputStream(
-            device=output_device_index,
-            samplerate=16000,
-            dtype="int16",
-            channels=1,
-            callback=output_callback,
-            blocksize=output_blocksize,
-            latency='low',  # 低延迟模式
-        ):
-            logger.info("Starting separate input and output audio streams")
-            while not self.stop_event.is_set():
-                time.sleep(0.001)
-            logger.info("Stopping separate audio streams")
+        except Exception as e:
+            logger.error(f"Error in output callback: {e}")
+            outdata.fill(0)
+            if self.is_playing.is_set():
+                self.is_playing.clear()
+
+    def run(self):
+        """Starts the audio input and output streams."""
+        self._setup_devices()
+
+        # Use smaller blocksize for input to reduce latency
+        input_blocksize = min(self.chunk_size, 1024)
+
+        logger.info("Starting audio streams...")
+        logger.info(
+            f"  Input  -> device={self._input_device_idx}, rate={self._input_device_sr}Hz, blocksize={input_blocksize}"
+        )
+        logger.info(
+            f"  Output -> device={self._output_device_idx}, rate={TARGET_SAMPLE_RATE}Hz, blocksize={self.chunk_size}"
+        )
+
+        try:
+            with (
+                sd.InputStream(
+                    device=self._input_device_idx,
+                    samplerate=self._input_device_sr,
+                    dtype=AUDIO_DTYPE_FLOAT32,
+                    channels=1,
+                    callback=self._input_callback,
+                    blocksize=input_blocksize,
+                    latency="low",
+                ),
+                sd.OutputStream(
+                    device=self._output_device_idx,
+                    samplerate=TARGET_SAMPLE_RATE,
+                    dtype=AUDIO_DTYPE_INT16,
+                    channels=1,
+                    callback=self._output_callback,
+                    blocksize=self.chunk_size,
+                    latency="low",
+                ),
+            ):
+                # Wait until stop_event is set, avoiding a busy-wait loop
+                self.stop_event.wait()
+
+        except sd.PortAudioError as e:
+            logger.error(
+                f"PortAudio error: {e}. Check if the audio devices are available and drivers are installed."
+            )
+        except Exception as e:
+            logger.error(f"An unexpected error occurred in the audio stream: {e}")
+        finally:
+            logger.info("Audio streams stopped.")
+
+    def stop(self):
+        """Signals the audio streams to stop."""
+        logger.info("Stopping audio streamer...")
+        self.stop_event.set()

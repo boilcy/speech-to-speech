@@ -3,6 +3,7 @@ from queue import Queue
 from threading import Event
 from typing import Optional
 from loguru import logger
+
 import os
 import sys
 from copy import copy
@@ -26,6 +27,11 @@ import nltk
 
 from src.utils.thread_manager import ThreadManager
 from src.vad.vad_handler import VADHandler
+
+from src.tts.kokoro_handler import KokoroTTSHandler
+# !!!IMPORTANT: This import is aim to override the loguru logger that set by kokoro
+# If you remove this import or use dynamic import, the loguru logger will be set by kokoro
+# Any other package that modify the loguru logger should also pre import
 
 # Ensure that the necessary NLTK resources are available
 try:
@@ -84,22 +90,31 @@ def parse_args():
         # Parse arguments from command line if no JSON file is provided
         return parser.parse_args_into_dataclasses()
 
+
 def setup_global_logging(log_level: str):
-    global logger
+    print("setup_global_logging id is", id(logger))
     logger.remove()
     log_level = log_level.upper() if log_level else "INFO"
     valid_levels = ["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
     if log_level not in valid_levels:
-        print(f"警告: 无效的日志级别 '{log_level}'。使用默认级别 'INFO'。", file=sys.stderr)
+        print(
+            f"警告: 无效的日志级别 '{log_level}'。使用默认级别 'INFO'。",
+            file=sys.stderr,
+        )
         log_level = "INFO"
 
     logger.add(
-        sys.stderr,
+        sys.stdout,
         level=log_level,
         format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         colorize=True,
+        enqueue=True,
     )
-    log_file = os.path.join(CURRENT_DIR, "logs", f"s2s_pipeline_{log_level}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    log_file = os.path.join(
+        CURRENT_DIR,
+        "logs",
+        f"s2s_pipeline_{log_level}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
+    )
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
     logger.add(
         log_file,
@@ -108,13 +123,15 @@ def setup_global_logging(log_level: str):
         colorize=True,
         rotation="10 MB",
         retention="10 days",
-        enqueue=False,
+        enqueue=True,
     )
     if log_level == "DEBUG":
         import torch
+
         torch._logging.set_logs(graph_breaks=True, recompiles=True, cudagraphs=True)
 
     logger.info(f"全局日志级别已设置为: {log_level}")
+
 
 def overwrite_device_argument(common_device: Optional[str], *handler_kwargs):
     if common_device:
@@ -196,7 +213,9 @@ def build_pipeline(
         from connections.local_audio_streamer import LocalAudioStreamer
 
         local_audio_streamer = LocalAudioStreamer(
-            input_queue=recv_audio_chunks_queue, output_queue=send_audio_chunks_queue, sounddevice_device=module_kwargs.sounddevice_device
+            input_queue=recv_audio_chunks_queue,
+            output_queue=send_audio_chunks_queue,
+            device=module_kwargs.sounddevice_device,
         )
         comms_handlers = [local_audio_streamer]
         should_listen.set()
@@ -265,6 +284,9 @@ def get_stt_handler(
 ):
     if module_kwargs.stt == "whisper":
         from src.stt.whisper_stt_handler import WhisperSTTHandler
+
+        print("WhisperSTTHandler prepared args id is", id(logger))
+
         return WhisperSTTHandler(
             stop_event,
             input_queue=spoken_prompt_queue,
@@ -318,8 +340,6 @@ def get_tts_handler(
     open_api_tts_handler_kwargs,
 ):
     if module_kwargs.tts == "kokoro":
-        from src.tts.kokoro_handler import KokoroTTSHandler
-
         logger.info(f"prepared args: {vars(kokoro_tts_handler_kwargs)}")
         return KokoroTTSHandler(
             stop_event,
@@ -338,9 +358,7 @@ def get_tts_handler(
             setup_kwargs=vars(open_api_tts_handler_kwargs),
         )
     else:
-        raise ValueError(
-            "The TTS should be kokoro or open_api"
-        )
+        raise ValueError("The TTS should be kokoro or open_api")
 
 
 def main():
@@ -388,8 +406,10 @@ def main():
     try:
         pipeline_manager.start()
         pipeline_manager.join()
+        logger.info("Pipeline finished")
     except KeyboardInterrupt:
         pipeline_manager.stop()
+        logger.info("Pipeline stopped")
 
 
 if __name__ == "__main__":

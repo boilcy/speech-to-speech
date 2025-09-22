@@ -81,14 +81,16 @@ class LanguageModelHandler(BaseHandler):
                 "enable_thinking": False,
             }
 
+        logger.debug(f"gen_kwargs: {self.gen_kwargs}")
+
         # 使用改进的Chat类
         self.chat = Chat(
             max_history_pairs=chat_size,
             max_tokens=max_tokens,
             preserve_system=True,
-            preserve_recent=preserve_recent
+            preserve_recent=preserve_recent,
         )
-        
+
         # 设置系统消息
         if init_chat_role:
             if not init_chat_prompt:
@@ -140,7 +142,7 @@ class LanguageModelHandler(BaseHandler):
             )
 
     def process(self, prompt):
-        logger.debug("infering language model...")
+        logger.debug("Starting language model inference...")
         language_code = None
         if isinstance(prompt, tuple):
             prompt, language_code = prompt
@@ -153,10 +155,11 @@ class LanguageModelHandler(BaseHandler):
 
         self.chat.append({"role": self.user_role, "content": prompt})
         chat_list = self.chat.to_list()
-        logger.debug(f"Feeding chat list: {chat_list}")
-        thread = Thread(
-            target=self.pipe, args=(chat_list,), kwargs=self.gen_kwargs
+        chat_text = self.tokenizer.apply_chat_template(
+            chat_list, tokenize=False, add_generation_prompt=True, enable_thinking=False
         )
+        logger.info(f"Model input raw text: {repr(chat_text)}")
+        thread = Thread(target=self.pipe, args=(chat_list,), kwargs=self.gen_kwargs)
         thread.start()
         if self.device == "mps":
             generated_text = ""
@@ -171,6 +174,7 @@ class LanguageModelHandler(BaseHandler):
                 printable_text += new_text
                 sentences = sent_tokenize(printable_text)
                 if len(sentences) > 1:
+                    logger.debug(f"Yielding sentence: {sentences[0]}")
                     yield (sentences[0], language_code)
                     printable_text = new_text
 
