@@ -37,3 +37,9 @@ class KokoroTTSHandlerArguments:
         default=True,
         metadata={"help": "Whether to use the default list of speakers or not."},
     )
+    tts_target_sample_rate: int = field(
+        default=None,
+        metadata={
+            "help": "The target sample rate for the audio output. Default is None."
+        },
+    )

@@ -141,6 +141,7 @@ class KokoroTTSHandler(BaseHandler):
         torch_dtype="float16",
         compile_mode=None,
         sample_rate=24000,
+        target_sample_rate=16000,
         default_voice="zf_001",
         use_default_voice=True,
         default_language="zh",
@@ -159,6 +160,7 @@ class KokoroTTSHandler(BaseHandler):
         self.torch_dtype = getattr(torch, torch_dtype)
         self.compile_mode = compile_mode
         self.sample_rate = sample_rate
+        self.target_sample_rate = target_sample_rate
         self.default_voice = default_voice
         self.default_language = default_language
         self.blocksize = blocksize
@@ -170,7 +172,7 @@ class KokoroTTSHandler(BaseHandler):
         logger.info(f"Loading Kokoro model {model_name} on {self.device}")
 
         self.model = (
-            KModel(repo_id=KOKORO_ZH_REPO_ID, model_name=model_name)
+            KModel(repo_id=KOKORO_ZH_REPO_ID)
             .to(self.device)
             .eval()
         )
@@ -301,11 +303,11 @@ class KokoroTTSHandler(BaseHandler):
 
                 audio_numpy = audio.cpu().numpy()
 
-                if self.sample_rate != 16000:
+                if self.sample_rate != self.target_sample_rate:
                     import librosa
 
                     audio_resampled = librosa.resample(
-                        audio_numpy, orig_sr=self.sample_rate, target_sr=16000
+                        audio_numpy, orig_sr=self.sample_rate, target_sr=self.target_sample_rate
                     )
 
                 # 转换为 int16 格式

@@ -22,14 +22,14 @@ class LocalAudioStreamer:
         chunk_size: int = 512,
         device: str = None,  # Input, Output
         echo_suppression_delay: float = 0.2,
-        echo_suppression_factor: float = 0.8,
+        echo_suppression_factor: float = 0.0, #
     ):
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.chunk_size = chunk_size
         self.device_str = device
         self.echo_suppression_delay = echo_suppression_delay
-        self.min_gain = 1.0 - echo_suppression_factor
+        self.min_gain = echo_suppression_factor
 
         self.stop_event = threading.Event()
         self.is_playing = threading.Event()
@@ -37,12 +37,15 @@ class LocalAudioStreamer:
 
         # Buffer for incoming audio before it's chunked
         self._input_buffer = np.array([], dtype=AUDIO_DTYPE_FLOAT32)
+        self._output_buffer = np.array([], dtype=AUDIO_DTYPE_FLOAT32)
 
         # Device properties that will be configured in run()
         self._input_device_idx = None
         self._output_device_idx = None
         self._input_device_sr = None
-        self._needs_resampling = False
+        self._output_device_sr = None
+        self._needs_input_resampling = False
+        self._needs_output_resampling = False
 
     def _setup_devices(self):
         """Queries and sets up the audio devices."""
@@ -69,7 +72,8 @@ class LocalAudioStreamer:
         output_device_info = devices[self._output_device_idx]
 
         self._input_device_sr = int(input_device_info["default_samplerate"])
-        self._needs_resampling = self._input_device_sr != TARGET_SAMPLE_RATE
+        self._needs_input_resampling = self._input_device_sr != TARGET_SAMPLE_RATE
+        self._needs_output_resampling = self._output_device_sr != TARGET_SAMPLE_RATE
 
         logger.info(
             f"Using Input Device : '{input_device_info['name']}' (Index: {self._input_device_idx})"
@@ -78,9 +82,14 @@ class LocalAudioStreamer:
             f"Using Output Device: '{output_device_info['name']}' (Index: {self._output_device_idx})"
         )
         logger.info(f"Input device sample rate: {self._input_device_sr} Hz")
-        if self._needs_resampling:
+        if self._needs_input_resampling:
             logger.info(
                 f"Input resampling enabled: {self._input_device_sr}Hz -> {TARGET_SAMPLE_RATE}Hz"
+            )
+        logger.info(f"Output device sample rate: {self._output_device_sr} Hz")
+        if self._needs_output_resampling:
+            logger.info(
+                f"Output resampling enabled: {TARGET_SAMPLE_RATE} -> {self._output_device_sr}Hz"
             )
 
     def _input_callback(
@@ -123,7 +132,7 @@ class LocalAudioStreamer:
             # Use only the first channel and ensure it's float32
             input_audio = indata[:, 0].astype(AUDIO_DTYPE_FLOAT32)
 
-            if self._needs_resampling:
+            if self._needs_input_resampling:
                 resampled_audio = librosa.resample(
                     y=input_audio,
                     orig_sr=self._input_device_sr,
@@ -153,35 +162,47 @@ class LocalAudioStreamer:
         if status:
             logger.warning(f"Output stream status: {status}")
 
+        outdata.fill(0)
         try:
-            if not self.output_queue.empty():
-                audio_chunk = self.output_queue.get_nowait()
+            while not self.output_queue.empty():
+                audio_chunk_int16 = self.output_queue.get_nowait()
+                audio_chunk_float32 = audio_chunk_int16.astype(AUDIO_DTYPE_FLOAT32) / 32767.0
+                
+                if self._needs_output_resampling:
+                    audio_chunk_float32 = librosa.resample(
+                        audio_chunk_float32,
+                        orig_sr=TARGET_SAMPLE_RATE,
+                        target_sr=self._output_device_sr,
+                    )
 
-                # Set playback flag and update timestamp
+                self._output_buffer = np.concatenate([self._output_buffer, audio_chunk_float32])
+
+                if len(self._output_buffer) >= frames:
+                    break
+            
+            if len(self._output_buffer) >= frames:
                 if not self.is_playing.is_set():
                     logger.debug("Playback started.")
                     self.is_playing.set()
                 self.last_play_time = time.currentTime
 
-                # Ensure chunk fits into outdata buffer
-                chunk_len = len(audio_chunk)
-                if chunk_len < frames:
-                    # Pad with silence if chunk is too short
-                    outdata[:chunk_len, 0] = audio_chunk
-                    outdata[chunk_len:, 0] = 0
-                else:
-                    # Truncate if chunk is too long
-                    outdata[:, 0] = audio_chunk[:frames]
+                # break because of the buffer is too long
+                chunk = self._output_buffer[:frames]
+                self._output_buffer = self._output_buffer[frames:]
 
             else:
-                # Fill with silence if queue is empty
-                outdata.fill(0)
+                # output_queue is empty, pad the buffer with silence
+                chunk = np.pad(self._output_buffer, (0, frames - len(self._output_buffer)))
+                self._output_buffer = np.array([], dtype=AUDIO_DTYPE_FLOAT32)
+                
                 if self.is_playing.is_set():
                     logger.debug(
                         f"Output queue empty. Playback stopped. "
                         f"Echo suppression will ramp down for {self.echo_suppression_delay}s."
                     )
                     self.is_playing.clear()
+
+            outdata[:, 0] = chunk
 
         except Exception as e:
             logger.error(f"Error in output callback: {e}")
@@ -217,8 +238,8 @@ class LocalAudioStreamer:
                 ),
                 sd.OutputStream(
                     device=self._output_device_idx,
-                    samplerate=TARGET_SAMPLE_RATE,
-                    dtype=AUDIO_DTYPE_INT16,
+                    samplerate=self._output_device_sr,
+                    dtype=AUDIO_DTYPE_FLOAT32,
                     channels=1,
                     callback=self._output_callback,
                     blocksize=self.chunk_size,
