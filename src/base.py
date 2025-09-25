@@ -35,7 +35,9 @@ class BaseHandler(ABC):
             f"Setup {self.__class__.__name__} with args: {setup_args} and kwargs: {setup_kwargs}"
         )
 
-        self.setup(*setup_args, **setup_kwargs)
+        _setup_kwargs = {k: v for k, v in setup_kwargs.items() if v is not None}
+
+        self.setup(*setup_args, **_setup_kwargs)
 
     def setup(self, *setup_args, **setup_kwargs):
         pass

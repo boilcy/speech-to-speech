@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from kokoro import KModel, KPipeline
 from loguru import logger
+import librosa
 
 KOKORO_ZH_REPO_ID = "hexgrad/Kokoro-82M-v1.1-zh"
 
@@ -171,11 +172,7 @@ class KokoroTTSHandler(BaseHandler):
 
         logger.info(f"Loading Kokoro model {model_name} on {self.device}")
 
-        self.model = (
-            KModel(repo_id=KOKORO_ZH_REPO_ID)
-            .to(self.device)
-            .eval()
-        )
+        self.model = KModel(repo_id=KOKORO_ZH_REPO_ID).to(self.device).eval()
         if self.compile_mode:
             self.model.generation_config.cache_implementation = "static"
             self.model.forward = torch.compile(
@@ -304,11 +301,13 @@ class KokoroTTSHandler(BaseHandler):
                 audio_numpy = audio.cpu().numpy()
 
                 if self.sample_rate != self.target_sample_rate:
-                    import librosa
-
                     audio_resampled = librosa.resample(
-                        audio_numpy, orig_sr=self.sample_rate, target_sr=self.target_sample_rate
+                        audio_numpy,
+                        orig_sr=self.sample_rate,
+                        target_sr=self.target_sample_rate,
                     )
+                else:
+                    audio_resampled = audio_numpy
 
                 # 转换为 int16 格式
                 audio_chunk = (audio_resampled * 32768).astype(np.int16)

@@ -8,7 +8,10 @@ model_name = "G:/models/Qwen3-0.6B"
 
 logger.remove()
 logger.add(sys.stdout, level="INFO")
-logger.add(f"logs/test_{model_name.split('/')[-1]}_{time.strftime('%Y%m%d_%H%M%S')}.log", level="INFO")
+logger.add(
+    f"logs/test_{model_name.split('/')[-1]}_{time.strftime('%Y%m%d_%H%M%S')}.log",
+    level="INFO",
+)
 
 gen_kwargs = {
     "do_sample": True,
@@ -16,7 +19,7 @@ gen_kwargs = {
     "temperature": 0.7,
     "top_p": 0.8,
     "top_k": 20,
-    "repetition_penalty": 1.5
+    "repetition_penalty": 1.5,
 }
 
 # load the tokenizer and the model
@@ -82,9 +85,9 @@ def generate_text(messages, log_raw_text=False):
         index = len(output_ids) - output_ids[::-1].index(151668)
     except ValueError:
         index = 0
-    thinking_content = tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip(
-        "\n"
-    )
+    thinking_content = tokenizer.decode(
+        output_ids[:index], skip_special_tokens=True
+    ).strip("\n")
     content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
 
     return content, thinking_content

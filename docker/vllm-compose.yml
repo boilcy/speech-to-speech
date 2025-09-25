@@ -1,0 +1,39 @@
+---
+services:
+  vllm-server:
+    container_name: vllm-server
+    image: nvcr.io/nvidia/tritonserver:25.08-vllm-python-py3
+    # didn't use task for editing
+    command: 
+      - vllm
+      - serve
+      - /root/models/Llama-3.2-1B-Instruct/
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --gpu-memory-utilization
+      - "0.5"
+      - --max_model_len
+      - "2048"
+      - --max-num-seqs
+      - "32"
+      - --tensor-parallel-size
+      - "1"
+      - --dtype
+      - float16
+    restart: unless-stopped
+    expose:
+      - 8000/tcp
+    ports:
+      - 8000:8000
+    volumes:
+      - ../../models/:/root/models/
+    runtime: "nvidia"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['all']
+              capabilities: [gpu]

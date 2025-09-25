@@ -175,8 +175,8 @@ class LanguageModelHandler(BaseHandler):
                 sentences = sent_tokenize(printable_text)
                 if len(sentences) > 1:
                     logger.debug(f"Yielding sentence: {sentences[0]}")
-                    yield (sentences[0], language_code)
                     printable_text = new_text
+                    yield (sentences[0], language_code)
 
         self.chat.append({"role": "assistant", "content": generated_text})
 

@@ -20,9 +20,9 @@ class LocalAudioStreamer:
         input_queue: Queue,
         output_queue: Queue,
         chunk_size: int = 512,
-        device: str = None,  # Input, Output
-        echo_suppression_delay: float = 0.2,
-        echo_suppression_factor: float = 0.0, #
+        device: str = None,
+        echo_suppression_delay: float = 0.1,
+        echo_suppression_factor: float = 0.0,  #
     ):
         self.input_queue = input_queue
         self.output_queue = output_queue
@@ -72,6 +72,7 @@ class LocalAudioStreamer:
         output_device_info = devices[self._output_device_idx]
 
         self._input_device_sr = int(input_device_info["default_samplerate"])
+        self._output_device_sr = int(output_device_info["default_samplerate"])
         self._needs_input_resampling = self._input_device_sr != TARGET_SAMPLE_RATE
         self._needs_output_resampling = self._output_device_sr != TARGET_SAMPLE_RATE
 
@@ -166,8 +167,10 @@ class LocalAudioStreamer:
         try:
             while not self.output_queue.empty():
                 audio_chunk_int16 = self.output_queue.get_nowait()
-                audio_chunk_float32 = audio_chunk_int16.astype(AUDIO_DTYPE_FLOAT32) / 32767.0
-                
+                audio_chunk_float32 = (
+                    audio_chunk_int16.astype(AUDIO_DTYPE_FLOAT32) / 32767.0
+                )
+
                 if self._needs_output_resampling:
                     audio_chunk_float32 = librosa.resample(
                         audio_chunk_float32,
@@ -175,11 +178,13 @@ class LocalAudioStreamer:
                         target_sr=self._output_device_sr,
                     )
 
-                self._output_buffer = np.concatenate([self._output_buffer, audio_chunk_float32])
+                self._output_buffer = np.concatenate(
+                    [self._output_buffer, audio_chunk_float32]
+                )
 
                 if len(self._output_buffer) >= frames:
                     break
-            
+
             if len(self._output_buffer) >= frames:
                 if not self.is_playing.is_set():
                     logger.debug("Playback started.")
@@ -192,9 +197,11 @@ class LocalAudioStreamer:
 
             else:
                 # output_queue is empty, pad the buffer with silence
-                chunk = np.pad(self._output_buffer, (0, frames - len(self._output_buffer)))
+                chunk = np.pad(
+                    self._output_buffer, (0, frames - len(self._output_buffer))
+                )
                 self._output_buffer = np.array([], dtype=AUDIO_DTYPE_FLOAT32)
-                
+
                 if self.is_playing.is_set():
                     logger.debug(
                         f"Output queue empty. Playback stopped. "
