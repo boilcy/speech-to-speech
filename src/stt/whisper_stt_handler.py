@@ -122,6 +122,7 @@ class WhisperSTTHandler(BaseHandler):
 
         input_features = self.prepare_model_inputs(spoken_prompt)
         pred_ids = self.model.generate(input_features, **self.gen_kwargs)
+        # logger.info("whisper transcription", self.processor.batch_decode(pred_ids, skip_special_tokens=False))
         # 添加安全检查
         if pred_ids.shape[1] < 2:
             logger.warning(

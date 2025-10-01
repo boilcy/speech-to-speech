@@ -5,6 +5,8 @@ import librosa
 from loguru import logger
 from queue import Queue
 
+import time as a_monotonic_clock
+
 # --- Constants ---
 TARGET_SAMPLE_RATE = 16000
 # Minimum audio chunk size in samples, required by models like VAD
@@ -100,7 +102,7 @@ class LocalAudioStreamer:
         if status:
             logger.warning(f"Input stream status: {status}")
 
-        current_time = time.currentTime
+        current_time = a_monotonic_clock.monotonic()
         gain = 1.0
 
         # --- Simplified Echo Suppression Logic ---
@@ -121,7 +123,7 @@ class LocalAudioStreamer:
             elif time_since_last_play < 0:
                 # Handle negative time difference (clock issues or callback timing)
                 logger.debug(
-                    f"Negative time difference detected: {time_since_last_play:.2f}s. Using min_gain."
+                    f"Negative time difference detected: current {current_time:.2f}s, last {self.last_play_time:.2f}. Using min_gain."
                 )
                 gain = self.min_gain
 
@@ -189,7 +191,7 @@ class LocalAudioStreamer:
                 if not self.is_playing.is_set():
                     logger.debug("Playback started.")
                     self.is_playing.set()
-                self.last_play_time = time.currentTime
+                self.last_play_time = a_monotonic_clock.monotonic()
 
                 # break because of the buffer is too long
                 chunk = self._output_buffer[:frames]

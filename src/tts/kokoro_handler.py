@@ -1,3 +1,5 @@
+import os
+import re
 import threading
 import queue
 from threading import Thread
@@ -137,7 +139,7 @@ class KokoroTTSHandler(BaseHandler):
     def setup(
         self,
         should_listen: threading.Event,
-        model_name="hexgrad/Kokoro-82M-v1.1-zh",
+        model_name=KOKORO_ZH_REPO_ID,
         device="cuda",
         torch_dtype="float16",
         compile_mode=None,
@@ -171,8 +173,18 @@ class KokoroTTSHandler(BaseHandler):
         self.use_default_voice = use_default_voice
 
         logger.info(f"Loading Kokoro model {model_name} on {self.device}")
+        
+        self.voice = None
+        # check if model_name is a valid path
+        if os.path.exists(model_name) or os.path.exists(os.path.expanduser(model_name)):
+            model_dir = os.path.expanduser(model_name)
+            model_weights_path = os.path.join(model_dir, "kokoro-v1_1-zh.pth")
+            model_config_path = os.path.join(model_dir, "config.json")
+            self.model = KModel(model = model_weights_path, config = model_config_path, repo_id=KOKORO_ZH_REPO_ID).to(self.device).eval()
+            self.voice = torch.load(f'{model_dir}/voices/{self.default_voice}.pt', weights_only=True)
+        else:
+            self.model = KModel(repo_id=KOKORO_ZH_REPO_ID).to(self.device).eval()
 
-        self.model = KModel(repo_id=KOKORO_ZH_REPO_ID).to(self.device).eval()
         if self.compile_mode:
             self.model.generation_config.cache_implementation = "static"
             self.model.forward = torch.compile(
@@ -232,7 +244,7 @@ class KokoroTTSHandler(BaseHandler):
         dummy_text = "这是一个测试句子。"
         try:
             generator = self.zh_pipeline(
-                dummy_text, voice=self.current_voice, speed=self._speed_callable
+                dummy_text, voice=self.voice, speed=self._speed_callable
             )
             result = next(generator)
             _ = result.audio
@@ -251,6 +263,22 @@ class KokoroTTSHandler(BaseHandler):
                 f"{self.__class__.__name__}: warmed up! time: {end_time - start_time:.3f} s"
             )
 
+    def _cleanup_sentence(self, llm_sentence):
+        """
+        清理句子，以防止 TTS 合成意外停止。
+        主要针对中文场景，去除换行符、多余空格、特殊标点等。
+        """
+        # 1. 将所有换行符替换为空格
+        cleaned_sentence = llm_sentence.replace('\n', ' ').replace('\r', ' ')
+        # 2. 将多个连续的空格替换为单个空格
+        cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence)
+        # 3. 去除句子两端的空格
+        cleaned_sentence = cleaned_sentence.strip()
+        # 4. 移除一些可能干扰 TTS 的特殊控制字符或不可见字符
+        # 这是一个常见的 Unicode 范围，包含了一些可能不需要的控制字符
+        cleaned_sentence = re.sub(r'[\u0000-\u001F\u007F-\u009F]', '', cleaned_sentence)
+        return cleaned_sentence
+
     def process(self, llm_sentence):
         """处理文本并生成音频"""
         language_code = self.default_language
@@ -263,6 +291,8 @@ class KokoroTTSHandler(BaseHandler):
                 )
 
             self.current_language = language_code
+        
+        llm_sentence = self._cleanup_sentence(llm_sentence)
 
         logger.info(f"ASSISTANT: {llm_sentence}")
 
@@ -284,7 +314,7 @@ class KokoroTTSHandler(BaseHandler):
                     )
 
                 generator = pipeline(
-                    llm_sentence, voice=self.current_voice, speed=self._speed_callable
+                    llm_sentence, voice=self.voice, speed=self._speed_callable
                 )
 
                 result = next(generator)

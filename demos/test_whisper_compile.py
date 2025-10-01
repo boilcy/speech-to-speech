@@ -5,10 +5,10 @@ from transformers import AutoModelForSpeechSeq2Seq
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-model_id = "./models/whisper-large-v3-turbo"
+model_id = "/home/liucy/models/whisper-large-v3-turbo"
 
 model = AutoModelForSpeechSeq2Seq.from_pretrained(
-    model_id, dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+    model_id, dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True, local_files_only=True
 )
 model.to(device)
 
@@ -18,7 +18,7 @@ dummy_input = torch.randn(
     device=device,
 )
 compile_mode = (
-    None  # default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs
+    'reduce-overhead'  # default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs
 )
 
 gen_kwargs = {

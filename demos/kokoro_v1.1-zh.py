@@ -3,12 +3,16 @@
 # Refer to Usage in README.md for more general usage patterns
 
 # pip install kokoro>=0.8.1 "misaki[zh]>=0.8.1"
+import os
 from kokoro import KModel, KPipeline
 from pathlib import Path
 import numpy as np
 import soundfile as sf
 import torch
 import tqdm
+
+model_dir = '~/models/Kokoro-82M-v1.1-zh'
+model_dir = os.path.expanduser(model_dir)
 
 REPO_ID = "hexgrad/Kokoro-82M-v1.1-zh"
 SAMPLE_RATE = 24000

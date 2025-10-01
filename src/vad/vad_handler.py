@@ -93,4 +93,4 @@ class VADHandler(BaseHandler):
 
     @property
     def min_time_to_debug(self):
-        return 0.001
+        return 0.01
