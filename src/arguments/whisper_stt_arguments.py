@@ -52,13 +52,12 @@ class WhisperSTTHandlerArguments:
             "help": "The task to perform, typically 'transcribe' for transcription. Default is 'transcribe'."
         },
     )
-    language: Optional[str] = field(
-        default="en",
+    language: str = field(
+        default="zh",
         metadata={
             "help": """The language for the conversation. 
-            Choose between 'en' (english), 'fr' (french), 'es' (spanish), 
-            'zh' (chinese), 'ko' (korean), 'ja' (japanese), 'hi' (hindi) or 'None'.
+            Choose between 'en' (english), 'zh' (chinese), or 'None'.
             If using 'auto', the language is automatically detected and can
-            change during the conversation. Default is 'en'."""
+            change during the conversation. Default is 'zh'."""
         },
     )

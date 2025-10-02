@@ -34,7 +34,7 @@ class WhisperSTTHandler(BaseHandler):
         device="cuda",
         torch_dtype="float16",
         compile_mode=None,
-        language=None,
+        language="zh",
         gen_kwargs={},
     ):
         if compile_mode and sys.platform != "linux":
@@ -46,10 +46,10 @@ class WhisperSTTHandler(BaseHandler):
         self.torch_dtype = getattr(torch, torch_dtype)
         self.compile_mode = compile_mode
         self.gen_kwargs = gen_kwargs
-        self.start_language = language
-        self.last_language = language if language != "auto" else None
-        if self.last_language is not None:
-            self.gen_kwargs["language"] = self.last_language
+        self.language = language
+
+        if self.language is not None:
+            self.gen_kwargs["language"] = self.language
 
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
@@ -117,43 +117,14 @@ class WhisperSTTHandler(BaseHandler):
     def process(self, spoken_prompt):
         logger.debug("Starting Whisper inference...")
 
-        global pipeline_start
-        pipeline_start = perf_counter()
-
         input_features = self.prepare_model_inputs(spoken_prompt)
         pred_ids = self.model.generate(input_features, **self.gen_kwargs)
-        # logger.info("whisper transcription", self.processor.batch_decode(pred_ids, skip_special_tokens=False))
-        # 添加安全检查
-        if pred_ids.shape[1] < 2:
-            logger.warning(
-                f"Generated token sequence too short: {pred_ids.shape}, using fallback language"
-            )
-            language_code = self.last_language or "zh"
-        else:
-            language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[2:-2]
-
-        logger.debug(f"Language Code Whisper: {language_code}")
-        if language_code not in SUPPORTED_LANGUAGES:  # reprocess with the last language
-            logger.warning(
-                f"Unsupported language detected: {language_code}, falling back to: {self.last_language}"
-            )
-            gen_kwargs = copy(self.gen_kwargs)
-            gen_kwargs["language"] = self.last_language
-            language_code = self.last_language
-            pred_ids = self.model.generate(input_features, **gen_kwargs)
-        else:
-            self.last_language = language_code
-
-        pred_text = self.processor.batch_decode(
+        transcription = self.processor.batch_decode(
             pred_ids, skip_special_tokens=True, decode_with_timestamps=False
         )[0]
-        language_code = self.processor.tokenizer.decode(pred_ids[0, 1])[2:-2]
 
         logger.debug("Whisper inference completed")
-        logger.info(f"USER: {pred_text}")
-        logger.debug(f"Final language code: {language_code}")
+        logger.info(f"USER: {transcription}")
+        logger.debug(f"Final language code: {self.language}")
 
-        if self.start_language == "auto":
-            language_code += "-auto"
-
-        yield (pred_text, language_code)
+        yield (transcription, self.language)

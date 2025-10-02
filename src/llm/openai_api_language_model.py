@@ -70,10 +70,9 @@ class OpenApiModelHandler(BaseHandler):
             warmup_response = ""
             for chunk in response:
                 warmup_response += chunk.choices[0].delta.content or ""
-            logger.debug(f"Warmup response: '{warmup_response}'")
         else:
             warmup_response = response.choices[0].message.content
-            logger.debug(f"Warmup response: '{warmup_response}'")
+        logger.debug(f"Warmup response: '{warmup_response}'")
         end = time.time()
         logger.info(
             f"{self.__class__.__name__}:  warmed up! time: {(end - start):.3f} s"

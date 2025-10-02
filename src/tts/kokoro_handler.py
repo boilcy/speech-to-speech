@@ -269,9 +269,9 @@ class KokoroTTSHandler(BaseHandler):
         主要针对中文场景，去除换行符、多余空格、特殊标点等。
         """
         # 1. 将所有换行符替换为空格
-        cleaned_sentence = llm_sentence.replace('\n', ' ').replace('\r', ' ')
+        cleaned_sentence = llm_sentence.replace('\n', '').replace('\r', '')
         # 2. 将多个连续的空格替换为单个空格
-        cleaned_sentence = re.sub(r'\s+', ' ', cleaned_sentence)
+        cleaned_sentence = re.sub(r'\s+', '', cleaned_sentence)
         # 3. 去除句子两端的空格
         cleaned_sentence = cleaned_sentence.strip()
         # 4. 移除一些可能干扰 TTS 的特殊控制字符或不可见字符
