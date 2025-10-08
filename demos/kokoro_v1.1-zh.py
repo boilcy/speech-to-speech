@@ -11,7 +11,7 @@ import soundfile as sf
 import torch
 import tqdm
 
-model_dir = '~/models/Kokoro-82M-v1.1-zh'
+model_dir = "~/models/Kokoro-82M-v1.1-zh"
 model_dir = os.path.expanduser(model_dir)
 
 REPO_ID = "hexgrad/Kokoro-82M-v1.1-zh"

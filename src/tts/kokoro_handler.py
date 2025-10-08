@@ -173,15 +173,25 @@ class KokoroTTSHandler(BaseHandler):
         self.use_default_voice = use_default_voice
 
         logger.info(f"Loading Kokoro model {model_name} on {self.device}")
-        
+
         self.voice = None
         # check if model_name is a valid path
         if os.path.exists(model_name) or os.path.exists(os.path.expanduser(model_name)):
             model_dir = os.path.expanduser(model_name)
             model_weights_path = os.path.join(model_dir, "kokoro-v1_1-zh.pth")
             model_config_path = os.path.join(model_dir, "config.json")
-            self.model = KModel(model = model_weights_path, config = model_config_path, repo_id=KOKORO_ZH_REPO_ID).to(self.device).eval()
-            self.voice = torch.load(f'{model_dir}/voices/{self.default_voice}.pt', weights_only=True)
+            self.model = (
+                KModel(
+                    model=model_weights_path,
+                    config=model_config_path,
+                    repo_id=KOKORO_ZH_REPO_ID,
+                )
+                .to(self.device)
+                .eval()
+            )
+            self.voice = torch.load(
+                f"{model_dir}/voices/{self.default_voice}.pt", weights_only=True
+            )
         else:
             self.model = KModel(repo_id=KOKORO_ZH_REPO_ID).to(self.device).eval()
 
@@ -269,14 +279,14 @@ class KokoroTTSHandler(BaseHandler):
         主要针对中文场景，去除换行符、多余空格、特殊标点等。
         """
         # 1. 将所有换行符替换为空格
-        cleaned_sentence = llm_sentence.replace('\n', '').replace('\r', '')
+        cleaned_sentence = llm_sentence.replace("\n", "").replace("\r", "")
         # 2. 将多个连续的空格替换为单个空格
-        cleaned_sentence = re.sub(r'\s+', '', cleaned_sentence)
+        cleaned_sentence = re.sub(r"\s+", "", cleaned_sentence)
         # 3. 去除句子两端的空格
         cleaned_sentence = cleaned_sentence.strip()
         # 4. 移除一些可能干扰 TTS 的特殊控制字符或不可见字符
         # 这是一个常见的 Unicode 范围，包含了一些可能不需要的控制字符
-        cleaned_sentence = re.sub(r'[\u0000-\u001F\u007F-\u009F]', '', cleaned_sentence)
+        cleaned_sentence = re.sub(r"[\u0000-\u001F\u007F-\u009F]", "", cleaned_sentence)
         return cleaned_sentence
 
     def process(self, llm_sentence):
@@ -291,7 +301,7 @@ class KokoroTTSHandler(BaseHandler):
                 )
 
             self.current_language = language_code
-        
+
         llm_sentence = self._cleanup_sentence(llm_sentence)
 
         logger.info(f"ASSISTANT: {llm_sentence}")

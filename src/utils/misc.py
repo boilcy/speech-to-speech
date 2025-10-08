@@ -1,3 +1,6 @@
+import base64
+import mimetypes
+import os
 from loguru import logger
 import numpy as np
 
@@ -13,6 +16,48 @@ def int2float(sound):
         sound *= 1 / 32768
     sound = sound.squeeze()  # depends on the use case
     return sound
+
+
+def get_image_mime_type(image_path):
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type and mime_type.startswith("image/"):
+        return mime_type
+
+    ext = os.path.splitext(image_path)[1].lower()
+    if ext == ".jpg" or ext == ".jpeg":
+        return "image/jpeg"
+    elif ext == ".png":
+        return "image/png"
+    return "application/octet-stream"
+
+
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
+
+def img2url(image_path):
+    base64_image = encode_image(image_path)
+    mime_type = get_image_mime_type(image_path)
+    return f"data:{mime_type};base64,{base64_image}"
+
+
+"""
+img_url = img2url(image_path)
+
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": img_url}}
+            ],
+        }
+    ]
+)
+"""
 
 
 def test_audio_devices():
