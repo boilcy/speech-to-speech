@@ -21,7 +21,7 @@ class LocalAudioStreamer:
         self,
         input_queue: Queue,
         output_queue: Queue,
-        chunk_size: int = 512,
+        chunk_size: int = 4410,
         device: str = None,
         echo_suppression_delay: float = 0.1,
         echo_suppression_factor: float = 0.0,  #
@@ -49,24 +49,59 @@ class LocalAudioStreamer:
         self._needs_input_resampling = False
         self._needs_output_resampling = False
 
+    def _find_device_index_by_name(self, device_name, is_input=True, devices=None):
+        """Helper function to find device index by name."""
+        if devices is None:
+            devices = sd.query_devices()
+        # Try to find an exact match first
+        for i, dev in enumerate(devices):
+            if dev["name"] == device_name and \
+               ((is_input and dev["max_input_channels"] > 0) or \
+                (not is_input and dev["max_output_channels"] > 0)):
+                logger.debug(f"Found exact match for device '{device_name}' at index {i}.")
+                return i
+        # If no exact match (e.g., due to trailing spaces or minor differences),
+        # try to find a case-insensitive partial match containing the name
+        device_name_lower = device_name.lower().strip()
+        for i, dev in enumerate(devices):
+            if device_name_lower in dev["name"].lower() and \
+               ((is_input and dev["max_input_channels"] > 0) or \
+                (not is_input and dev["max_output_channels"] > 0)):
+                logger.debug(f"Found partial match for device '{device_name}' at index {i}: '{dev['name']}'.")
+                return i
+        
+        logger.warning(f"Device '{device_name}' not found. Will try to use system default for { 'input' if is_input else 'output' }.")
+        return None
+
     def _setup_devices(self):
         """Queries and sets up the audio devices."""
-        logger.debug("Querying audio devices...")
+        logger.info("Querying audio devices...")
         devices = sd.query_devices()
         logger.info(f"Available audio devices:\n{devices}")
 
         if self.device_str:
+            parts = self.device_str.split(",")
             try:
-                self._input_device_idx, self._output_device_idx = map(
-                    int, self.device_str.split(",")
-                )
-            except (ValueError, IndexError):
-                logger.warning(
-                    f"Invalid device string '{self.device_str}'. Using default devices."
-                )
-                self._input_device_idx, self._output_device_idx = sd.default.device
+                # 先尝试解析为整数索引
+                self._input_device_idx = int(parts[0].strip())
+                self._output_device_idx = int(parts[1].strip())
+                logger.info(f"Using device indices from device_str: Input={self._input_device_idx}, Output={self._output_device_idx}")
+            except ValueError:
+                # 如果不是整数，则解析为设备名称
+                input_device_name = parts[0].strip()
+                output_device_name = parts[1].strip()
+                logger.info(f"Using device names from device_str: Input='{input_device_name}', Output='{output_device_name}'")
+            except Exception as e:
+                logger.error(f"Error parsing device string: {e}")
+                raise
         else:
             self._input_device_idx, self._output_device_idx = sd.default.device
+        
+        # 如果通过名称指定了设备，查找它们的索引
+        if input_device_name:
+            self._input_device_idx = self._find_device_index_by_name(input_device_name, is_input=True, devices=devices)
+        if output_device_name:
+            self._output_device_idx = self._find_device_index_by_name(output_device_name, is_input=False, devices=devices)
 
         sd.default.device = self._input_device_idx, self._output_device_idx
 
@@ -224,7 +259,7 @@ class LocalAudioStreamer:
         self._setup_devices()
 
         # Use smaller blocksize for input to reduce latency
-        input_blocksize = min(self.chunk_size, 1024)
+        input_blocksize = min(self.chunk_size, 4410) # 100ms
 
         logger.info("Starting audio streams...")
         logger.info(

@@ -1,0 +1,18 @@
+[Unit]
+Description=Dialogue Assistant Application
+Requires=bluetooth-autoconnect.service
+After=bluetooth-autoconnect.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=liucy
+Group=liucy
+WorkingDirectory=/home/liucy/speech-to-speech/
+ExecStart=/usr/bin/pixi run --manifest-path /home/liucy/speech-to-speech/pixi.toml -e orin-nano local2 "0,33"
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
