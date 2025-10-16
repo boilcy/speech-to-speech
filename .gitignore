@@ -8,3 +8,6 @@ cache# pixi environments
 models
 submodules
 logs
+
+.env
+.env.*

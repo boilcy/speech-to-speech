@@ -5,16 +5,23 @@ After=bluetooth.service
 # 如果你使用的是 PulseAudio
 After=pulseaudio.service
 # 如果你使用的是 PipeWire
-# After=pipewire.service pipewire-pulse.service
+After=pipewire.service pipewire-pulse.service
 After=network-online.target
+After=default.target
+Wants=default.target
 
 [Service]
 Type=oneshot
 User=liucy
 Group=liucy
-ExecStart=/usr/local/bin/bluetooth-autoconnect.sh
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
+ExecStart=/home/liucy/speech-to-speech/scripts/bluetooth-autoconnect.sh
 TimeoutStartSec=600
 RemainAfterExit=yes
+StandardOutput=journal
+StandardError=inherit
+PrivateDevices=no
 
 [Install]
 WantedBy=multi-user.target

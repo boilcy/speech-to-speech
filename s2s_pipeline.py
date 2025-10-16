@@ -25,6 +25,7 @@ from src.arguments.whisper_stt_arguments import WhisperSTTHandlerArguments
 from pathlib import Path
 import nltk
 
+from src.middleware.wakeup import WakeupMiddleware
 from src.utils.thread_manager import ThreadManager
 from src.vad.vad_handler import VADHandler
 
@@ -185,6 +186,7 @@ def initialize_queues_and_events():
         "recv_audio_chunks_queue": Queue(),
         "send_audio_chunks_queue": Queue(),
         "spoken_prompt_queue": Queue(),
+        "wakeup_prompt_queue": Queue(),
         "text_prompt_queue": Queue(),
         "lm_response_queue": Queue(),
     }
@@ -207,6 +209,7 @@ def build_pipeline(
     recv_audio_chunks_queue = queues_and_events["recv_audio_chunks_queue"]
     send_audio_chunks_queue = queues_and_events["send_audio_chunks_queue"]
     spoken_prompt_queue = queues_and_events["spoken_prompt_queue"]
+    wakeup_prompt_queue = queues_and_events["wakeup_prompt_queue"]
     text_prompt_queue = queues_and_events["text_prompt_queue"]
     lm_response_queue = queues_and_events["lm_response_queue"]
     if module_kwargs.mode == "local":
@@ -252,8 +255,14 @@ def build_pipeline(
         module_kwargs,
         stop_event,
         spoken_prompt_queue,
-        text_prompt_queue,
+        wakeup_prompt_queue,
         whisper_stt_handler_kwargs,
+    )
+    wakeup_middleware = WakeupMiddleware(
+        stop_event,
+        input_queue=wakeup_prompt_queue,
+        output_queue=text_prompt_queue,
+        setup_kwargs={"wakeup_word": "你好", "end_word": "再见"},
     )
     lm = get_llm_handler(
         module_kwargs,
@@ -272,7 +281,7 @@ def build_pipeline(
         kokoro_tts_handler_kwargs,
         open_api_tts_handler_kwargs,
     )
-    return ThreadManager([*comms_handlers, vad, stt, lm, tts])
+    return ThreadManager([*comms_handlers, vad, stt,wakeup_middleware, lm, tts])
 
 
 def get_stt_handler(

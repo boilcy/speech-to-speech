@@ -1,7 +1,9 @@
 [Unit]
 Description=Dialogue Assistant Application
-Requires=bluetooth-autoconnect.service
-After=bluetooth-autoconnect.service
+#Requires=bluetooth-autoconnect.service
+#After=bluetooth-autoconnect.service
+Requires=bluetooth.service
+After=bluetooth.service
 After=network-online.target
 Wants=network-online.target
 
@@ -10,9 +12,13 @@ Type=simple
 User=liucy
 Group=liucy
 WorkingDirectory=/home/liucy/speech-to-speech/
-ExecStart=/usr/bin/pixi run --manifest-path /home/liucy/speech-to-speech/pixi.toml -e orin-nano local2 "0,33"
+EnvironmentFile=/home/liucy/speech-to-speech/scripts/dialog-assistant.env
+ExecStart=/home/liucy/.pixi/bin/pixi run --manifest-path /home/liucy/speech-to-speech/pixi.toml -e orin-nano local2 "Newmine: USB Audio,default" INFO $DEEPSEEK_API_KEY
 Restart=on-failure
 RestartSec=5s
+StandardOutput=journal
+StandardError=inherit\
+PrivateDevices=no
 
 [Install]
 WantedBy=multi-user.target
